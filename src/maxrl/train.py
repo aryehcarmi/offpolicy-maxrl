@@ -90,7 +90,7 @@ def update_policy(model, optimizer, groups, method, score_batch):
     optimizer.zero_grad(set_to_none=True)
     summary, all_log_w = accumulate_gradient(model, groups, method, score_batch)
     optimizer.step()
-    if summary["successful_weights"] is not None:
+    if any(p.grad is not None for p in model.parameters()):
         # A finite gradient can still yield an overflowing SGD update. The
         # infinity norm scans FP32 parameters without allocating a model copy.
         with torch.no_grad():

@@ -138,7 +138,7 @@ def measure_rates(model, first, heldout, runtime, out):
             predicted = rate * norm ** 2
             updated = score_log_weights(model, successful, score_batch)
             delta = updated - baseline
-            realized = math.fsum(coefficients * delta)
+            realized = math.fsum(w * d for w, d in zip(coefficients, delta, strict=True))
             # The separate integrated Count objective is sum_i W_i / (K * #prompts).
             try:
                 count_change = math.fsum(
