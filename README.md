@@ -22,7 +22,7 @@ For the toy experiments and tests without model dependencies:
 uv sync --frozen --extra study --extra test
 ```
 
-The controlled environment is pinned in [uv.lock](uv.lock). CUDA runs need a driver compatible with the locked PyTorch build. Li et al.'s replication has a [separate environment](docs/replication.md). Tested versions and external commits are listed in [sources](docs/sources.md).
+The controlled environment is pinned in [uv.lock](uv.lock). CUDA runs need a driver compatible with the locked PyTorch build. For the initial Li et al. evaluation, `scripts/modal_li_initial.py` runs the published 64-puzzle, eight-response check on Modal. See the [replication guide](docs/replication.md) for the CPU preflight, GPU command, output retrieval and Linux setup. Tested versions and external commits are listed in [sources](docs/sources.md).
 
 ## Toy experiments
 
@@ -82,7 +82,7 @@ Groups with no successes contribute zero and remain in the batch average. Ratios
 | [Toy experiments](docs/toy.md) | Exact calculation, numerical checks and figure captions |
 | [Gradient diagnostics](docs/diagnostics.md) | Collection, scoring, uncertainty and full-model checks |
 | [Training experiments](docs/matrix.md) | Tuning, matched seeds, final evaluation and budget |
-| [Replicating Li et al.](docs/replication.md) | Li et al.'s setup and six training runs |
+| [Replicating Li et al.](docs/replication.md) | Initial 512-completion check on Modal or a Linux GPU host, plus the separate six-run training comparison |
 | [Sources](docs/sources.md) | Dependencies, source revisions, licenses and related work |
 | [Research log](docs/research-log.md) | Dated measurements and verification records |
 
@@ -96,6 +96,6 @@ Groups with no successes contribute zero and remain in the batch average. Ratios
 | `src/maxrl/diagnostics.py`, `gradient_metrics.py`, `full_gradients.py` | Saved-response gradient comparisons |
 | `src/maxrl/matrix.py`, `compare.py`, `budget.py`, `report.py` | Experiment commands, analysis and cost reports |
 | `configs/`, `tests/` | Experiment settings and CPU tests |
-| `scripts/li_replication.py` | Adapter to the pinned upstream implementation |
+| `scripts/li_replication.py`, `scripts/modal_li_initial.py` | Adapter to the pinned upstream implementation and Modal launcher for initial evaluation |
 
 The controlled backend uses one device. Run outputs and gradient scratch should use a local disk with hard-link support; copy completed artifacts to shared storage afterward. Profile the pilot before scheduling long runs: the trainer has no resume support. See the [resource notes](docs/matrix.md#storage-and-scheduling) for checkpoint and scratch space. Pretrained-model GPU accuracy, throughput and cost remain to be measured.

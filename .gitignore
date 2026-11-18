@@ -10,4 +10,5 @@ dist/
 /runs/
 /results/*
 !/results/toy/
+!/results/midway/
 /external/
