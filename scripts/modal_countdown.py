@@ -20,18 +20,37 @@ from uuid import uuid4
 
 
 MANIFEST_SHA256 = "abdb27fbeeefdae2c9f6cce441811af401e07937f9b6bd4693f8a5cabb556186"
-PILOT_DEPENDENT = ("replay", "midpoint")
+PILOT_DEPENDENT = ("replay", "midpoint", "saved-verify", "saved-train", "saved-validation")
 STAGES = ("preflight", "initial-eval", "pilot", *PILOT_DEPENDENT)
 TEST_SDK = "/opt/countdown-test-sdk"
 PILOT_INPUTS = ("run.json", "metrics.jsonl", "resources.csv")
 BUDGET_CONFIGS = ("pilot.json", "screen.json", "tune.json", "main.json")
 REPLAY_FILES = ("rates.csv", "heldout.jsonl", "replay.json", "resources.csv")
 REPLAY_OUTPUTS = {"original": REPLAY_FILES, "low": (*REPLAY_FILES, "successes.jsonl")}
+SELECTED_RATE = 1.5e-7
+SAVED_OUTPUTS = {
+    "saved-verify": ("verification.json", "resources.csv"),
+    "saved-train": ("trajectories.jsonl", "summary.json", "resources.csv", "pilot/run.json",
+                    "probes/first-token.jsonl", "probes/parameter-types.json",
+                    "probes/first-token-summary.json", "probes/resources.csv"),
+    "saved-validation": ("run.json", "metrics.json", "resources.csv"),
+}
+MIDPOINT_FILES = ("manifest.json", "resources.csv", "scores/provenance.json", "scores/resources.csv",
+                  "analysis-N8/summary.json", "analysis-N8/exposure.csv",
+                  "full-initial-N8/summary.json", "full-initial-N8/resources.csv")
 
 
 def _check_grid(stage, grid):
     if grid not in REPLAY_OUTPUTS or (stage != "replay" and grid != "original"):
         raise ValueError("Use --grid original or --grid low with the replay stage")
+
+
+def _stage_files(stage, grid):
+    if stage == "replay":
+        return REPLAY_OUTPUTS[grid]
+    if stage == "midpoint":
+        return MIDPOINT_FILES
+    return SAVED_OUTPUTS.get(stage, ())
 
 
 def _digest(path):
@@ -78,12 +97,12 @@ def verify_initial_output(output: Path, manifest: Path, hourly_usd: float) -> No
     print(f"Verified {len(groups)} validation puzzles, {actual['responses']} responses and resource total")
 
 
-def verify_pilot_checkpoints(output, saved, inventory, *, completed):
+def verify_pilot_checkpoints(output, saved, inventory, *, completed, prefix="output"):
     """Compare the worker's checkpoint bytes with the SHA-256 inventory read on the Volume."""
     checkpoints = output / "checkpoints"
     for path in checkpoints.rglob("*"):
         if path.is_file():
-            key = str(Path("output") / path.relative_to(output))
+            key = str(Path(prefix) / path.relative_to(output))
             if inventory.get(key) != _digest(path):
                 raise ValueError(f"Checkpoint SHA-256 mismatch: {key}")
 
@@ -107,7 +126,7 @@ def verify_pilot_checkpoints(output, saved, inventory, *, completed):
     return verified
 
 
-def job_commands(stage, repo, manifest, output, hourly_usd, pilot_run=None, grid="original"):
+def job_commands(stage, repo, manifest, output, hourly_usd, pilot_run=None, grid="original", initial_eval=None):
     """Return exactly the documented commands for one GPU job; no shell or stage chaining."""
     if hourly_usd is None or not math.isfinite(hourly_usd) or hourly_usd <= 0:
         raise ValueError("A positive, finite total hourly machine rate is required")
@@ -120,6 +139,21 @@ def job_commands(stage, repo, manifest, output, hourly_usd, pilot_run=None, grid
                  "--out", str(output), *device, "--generation-batch", "8", "--score-batch", "1", *price]]
     if stage not in PILOT_DEPENDENT or pilot_run is None:
         raise ValueError(f"Expected a GPU stage with its required pilot input, got {stage!r}")
+    if stage == "saved-validation":
+        return [[python, "-m", "maxrl.evaluate", "--config", "configs/pilot.json", "--manifest", str(manifest),
+                 "--checkpoint", str(pilot_run / "checkpoints/step-000016"), "--seed", "18",
+                 "--method", "count", "--lr", str(SELECTED_RATE), "--panel", "validation", "--out", str(output),
+                 *device, "--generation-batch", "8", "--score-batch", "1", *price]]
+    if stage in ("saved-verify", "saved-train"):
+        mode = "verify" if stage == "saved-verify" else "run"
+        inputs = ["--pilot", str(pilot_run), "--device", "cuda", *price]
+        command = [python, "-m", "maxrl.saved_trajectory", mode, *inputs, "--out", str(output)]
+        if mode == "verify":
+            return [command]
+        if initial_eval is None:
+            raise ValueError("Saved-batch training requires the initial validation pool")
+        return [[*command, "--initial-eval", str(initial_eval), "--manifest", str(manifest)],
+                [python, "-m", "maxrl.trajectory_probes", *inputs, "--out", str(output / "probes")]]
     if stage == "replay":
         grid_args = ["--grid", grid] if grid != "original" else []
         return [[python, "-m", "maxrl.replay", "--pilot", str(pilot_run), "--out", str(output),
@@ -214,30 +248,94 @@ def _preflight(repo, volume_root, scratch, emit, commit):
     return digest
 
 
-def _pilot_input(volume_root, pilot_attempt, assigned_gpu, stage="midpoint", grid="original"):
-    if not pilot_attempt or Path(pilot_attempt).name != pilot_attempt or pilot_attempt in (".", ".."):
-        raise ValueError(f"A {stage} job requires a pilot attempt directory name")
-    folder = volume_root / pilot_attempt
+def _attempt_input(root, name, allowed, gpu, stage):
+    if not name or Path(name).name != name or name in (".", ".."):
+        raise ValueError(f"A {stage} job requires a valid source attempt directory name")
+    folder = root / name
     record = json.loads((folder / "attempt.json").read_text())
-    if record["stage"] != "pilot" or record["status"] != "completed":
-        raise ValueError(f"Pilot attempt {pilot_attempt} did not complete")
-    pilot_cards = {gpu_type(record[key]) for key in ("gpu_type", "gpu_name") if record.get(key)}
-    if pilot_cards != {assigned_gpu}:
-        raise ValueError(f"{stage} GPU {assigned_gpu} must match pilot {pilot_attempt} "
-                         f"(recorded GPU types: {sorted(pilot_cards)})")
-    if stage == "replay":
-        if record["attempt_id"] != pilot_attempt or record["manifest_sha256"] != MANIFEST_SHA256:
-            raise ValueError("Replay source pilot attempt or data manifest identity mismatch")
-        last_step = 16 if grid == "low" else 2
-        shards = [f"responses/train-{step:06d}.jsonl" for step in range(1, last_step + 1)]
-        for name in ("run.json", "metrics.jsonl", *shards):
-            key = f"output/{name}"
-            if record["sha256"].get(key) != _digest(folder / key):
-                raise ValueError(f"Replay source SHA-256 mismatch: {key}")
-        run = json.loads((folder / "output/run.json").read_text())
-        if run["manifest_sha256"] != record["manifest_sha256"]:
-            raise ValueError("Replay source run and attempt disagree on data manifest")
-    return folder / "output"
+    if record["stage"] not in allowed or record["status"] != "completed":
+        raise ValueError(f"Invalid or incomplete source attempt {name} for {stage}")
+    cards = {gpu_type(record[key]) for key in ("gpu_type", "gpu_name") if record.get(key)}
+    if cards != {gpu}:
+        raise ValueError(f"{stage} GPU {gpu} must match pilot or source {name} (recorded types {sorted(cards)})")
+    return folder, record
+
+
+def _check_source_record(folder, record):
+    if record["attempt_id"] != folder.name or record["manifest_sha256"] != MANIFEST_SHA256:
+        raise ValueError("Source attempt or data manifest identity mismatch")
+
+
+def _check_files(folder, record, names):
+    for name in names:
+        key = f"output/{name}"
+        if record["sha256"].get(key) != _digest(folder / key):
+            raise ValueError(f"Source SHA-256 mismatch: {key}")
+
+
+def _pilot_input(volume_root, pilot_attempt, assigned_gpu, stage="midpoint", grid="original"):
+    allowed = {"saved-train"} if stage == "saved-validation" else {"pilot"}
+    if stage == "midpoint":
+        allowed.add("saved-train")
+    folder, record = _attempt_input(volume_root, pilot_attempt, allowed, assigned_gpu, stage)
+    output = folder / "output"
+    if record["stage"] == "saved-train":
+        _check_source_record(folder, record)
+        pilot = output / "pilot"
+        checkpoint = pilot / "checkpoints/step-000016"
+        names = [key.removeprefix("output/") for key in record["sha256"]
+                 if key.startswith("output/pilot/checkpoints/step-000016/")]
+        for required in ("model.safetensors", "config.json", "tokenizer.json",
+                         "tokenizer_config.json", "maxrl_checkpoint.json"):
+            if f"pilot/checkpoints/step-000016/{required}" not in names:
+                raise ValueError(f"Missing saved checkpoint file: {required}")
+        _check_files(folder, record, ["pilot/run.json", *names])
+        run = json.loads((pilot / "run.json").read_text())
+        marker = json.loads((checkpoint / "maxrl_checkpoint.json").read_text())
+        identity = f"{run['run_id']}/step-000016"
+        config = run["config"]
+        if (record.get("verified_checkpoints") != [identity] or marker["checkpoint_id"] != identity
+                or marker["prompt"] != run["prompt"] or run["manifest_sha256"] != MANIFEST_SHA256
+                or (config["method"], config["lr"], config["updates"], config["seed"]) != ("count", SELECTED_RATE, 16, 17)):
+            raise ValueError("Saved checkpoint identity or selected Count settings do not match")
+        return pilot
+    if stage == "midpoint":
+        return output
+    _check_source_record(folder, record)
+    last_step = 2 if stage == "replay" and grid == "original" else 16
+    names = ["run.json", "metrics.jsonl", *(f"responses/train-{i:06d}.jsonl" for i in range(1, last_step + 1))]
+    if stage in ("saved-verify", "saved-train"):
+        names.extend(f"responses/weights-{i:06d}.csv" for i in range(1, 17))
+    if stage == "saved-train":
+        names.append("responses/validation-000000.jsonl")
+    _check_files(folder, record, names)
+    run = json.loads((output / "run.json").read_text())
+    if run["manifest_sha256"] != MANIFEST_SHA256:
+        raise ValueError("Source run and attempt disagree on data manifest")
+    return output
+
+
+def _training_sources(volume_root, verification_attempt, initial_attempt, pilot_run, gpu):
+    folder, record = _attempt_input(volume_root, verification_attempt, {"saved-verify"}, gpu, "saved-train")
+    _check_source_record(folder, record)
+    _check_files(folder, record, ["verification.json"])
+    check = json.loads((folder / "output/verification.json").read_text())
+    pilot_record = json.loads((pilot_run.parent / "attempt.json").read_text())
+    pilot = json.loads((pilot_run / "run.json").read_text())
+    checked = ["run.json", "metrics.jsonl", *(f"responses/train-{i:06d}.jsonl" for i in range(1, 17)),
+               *(f"responses/weights-{i:06d}.csv" for i in range(1, 17))]
+    if (record["pilot_attempt"] != pilot_run.parent.name or check["passed"] is not True
+            or check["pilot_run_id"] != pilot["run_id"] or check["initial_checkpoint_id"] != pilot["initial_checkpoint_id"]
+            or any(check["source_sha256"].get(n) != pilot_record["sha256"][f"output/{n}"] for n in checked)):
+        raise ValueError("Saved-batch verification must match this exact pilot and all 16 batches")
+    initial, initial_record = _attempt_input(volume_root, initial_attempt, {"initial-eval"}, gpu, "saved-train")
+    _check_source_record(initial, initial_record)
+    _check_files(initial, initial_record, ["run.json", "responses.jsonl"])
+    meta = json.loads((initial / "output/run.json").read_text())
+    if (meta["panel"] != "validation" or meta["checkpoint_id"] != pilot["initial_checkpoint_id"]
+            or meta["prompt"] != pilot["prompt"] or meta["manifest_sha256"] != MANIFEST_SHA256):
+        raise ValueError("Initial evaluation pool has different model, prompt or validation panel")
+    return initial / "output"
 
 
 def _utc():
@@ -264,7 +362,8 @@ def git_provenance(repo):
 
 
 def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str, provenance: dict,
-                rates: dict | None = None, pilot_attempt: str | None = None, grid: str = "original") -> dict:
+                rates: dict | None = None, pilot_attempt: str | None = None, grid: str = "original",
+                verification_attempt=None, initial_attempt=None) -> dict:
     """Keep writable experiment files on local disk and preserve one Volume folder per invocation."""
     if stage not in STAGES or (stage not in PILOT_DEPENDENT and pilot_attempt is not None):
         raise ValueError(f"Invalid stage or pilot input for {stage!r}")
@@ -281,6 +380,11 @@ def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str, provenance
               "hourly_usd": None, "sha256": {}}
     if stage == "replay":
         record["grid"] = grid
+    if stage == "saved-train":
+        record.update(verification_attempt=verification_attempt, initial_attempt=initial_attempt,
+                      selected_method="count", learning_rate=SELECTED_RATE)
+    if stage == "saved-validation":
+        record["learning_rate"] = SELECTED_RATE
     record_path = attempt / "attempt.json"
     log = attempt / "run.log"
     start = time.monotonic()
@@ -310,16 +414,22 @@ def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str, provenance
                 commit()
                 pilot = (_pilot_input(volume_root, pilot_attempt, record["gpu_type"], stage, grid)
                          if stage in PILOT_DEPENDENT else None)
+                initial_eval = None
+                if stage == "saved-train":
+                    initial_eval = _training_sources(volume_root, verification_attempt, initial_attempt,
+                                                     pilot, record["gpu_type"])
+                if stage == "midpoint" and pilot.name == "pilot":
+                    record["source_learning_rate"] = SELECTED_RATE
                 manifest = volume_root / "data/manifest.json"
                 record["manifest_sha256"] = verify_manifest(manifest)
-                commands = job_commands(stage, repo, manifest, output, hourly_usd, pilot, grid)
+                commands = job_commands(stage, repo, manifest, output, hourly_usd, pilot, grid, initial_eval)
                 _run([repo / ".venv/bin/python", "-c", "import torch; "
                       "assert torch.cuda.is_available() and torch.cuda.device_count() == 1, 'expected one CUDA GPU'; "
                       "print(torch.__version__, torch.version.cuda, torch.cuda.get_device_name(0))"], repo, emit)
                 with _sample_gpu(attempt / "gpu.csv", emit):
                     for command in commands:
                         _run(command, repo, emit)
-                if stage == "initial-eval":
+                if stage in ("initial-eval", "saved-validation"):
                     _run([repo / ".venv/bin/python", "-c",
                           "from pathlib import Path; import sys; "
                           "from scripts.modal_countdown import verify_initial_output; "
@@ -327,10 +437,9 @@ def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str, provenance
                           output, manifest, str(hourly_usd)], repo, emit)
                 if not output.is_dir():
                     raise FileNotFoundError(f"Job exited without creating {output}")
-                if stage == "replay":
-                    for name in REPLAY_OUTPUTS[grid]:
-                        if not (output / name).stat().st_size:
-                            raise ValueError(f"Empty replay result: {name}")
+                for name in _stage_files(stage, grid):
+                    if not (output / name).stat().st_size:
+                        raise ValueError(f"Empty {stage} result: {name}")
                 if stage == "pilot":
                     (output / "configs").mkdir()
                     for name in BUDGET_CONFIGS:
@@ -345,7 +454,7 @@ def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str, provenance
             try:
                 if output.exists():
                     shutil.copytree(output, attempt / "output")
-                    if stage == "pilot":
+                    if stage in ("pilot", "saved-train"):
                         commit()  # Verify the copied files on the Volume before releasing local scratch.
             except BaseException as error:
                 previous = record.get("error", "")
@@ -361,6 +470,11 @@ def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str, provenance
                     if stage == "pilot":
                         record["verified_checkpoints"] = verify_pilot_checkpoints(
                             output, attempt / "output", record["sha256"], completed=record["status"] == "completed"
+                        )
+                    if stage == "saved-train":
+                        record["verified_checkpoints"] = verify_pilot_checkpoints(
+                            output / "pilot", attempt / "output/pilot", record["sha256"],
+                            completed=record["status"] == "completed", prefix="output/pilot",
                         )
                 except (OSError, ValueError, KeyError) as error:
                     previous = record.get("error", "")
@@ -476,9 +590,7 @@ def _small_artifact(stage, path, grid="original"):
     if stage == "pilot":
         return (str(relative) in (*PILOT_INPUTS, "failure.json") or
                 (relative.parent == Path("configs") and relative.name in BUDGET_CONFIGS))
-    if stage == "replay":
-        return str(relative) in REPLAY_OUTPUTS[grid]
-    return stage == "midpoint" and relative.name in ("manifest.json", "summary.json", "provenance.json", "resources.csv")
+    return str(relative) in _stage_files(stage, grid)
 
 
 def _pilot_summary(repo, attempt, summary):
@@ -529,20 +641,27 @@ def download_attempt(record, repo, volume):
             if digest.hexdigest() != expected:
                 raise ValueError(f"SHA-256 mismatch: {filename}")
         _publish_folder(staged, folder, keep_extra=True)
-    if stage in ("initial-eval", "pilot", "replay") and record["status"] == "completed":
+    if stage != "preflight" and record["status"] == "completed":
         midway = repo / "results/midway"
         target = midway / stage
         if stage == "replay":
             target = target / grid
+        elif stage == "saved-train":
+            target = midway / "saved-trajectories"
+        elif stage == "saved-validation":
+            target = midway / "pilot-lr-1.5e-7"
+        elif stage == "midpoint" and record.get("source_learning_rate") == SELECTED_RATE:
+            target = midway / "midpoint-lr-1.5e-7"
         target.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=target.parent) as tmp:
             summary = Path(tmp) / stage
             summary.mkdir()
             if stage == "pilot":
                 _pilot_summary(repo, folder, summary)
-            elif stage == "replay":
+            elif _stage_files(stage, grid):
                 shutil.copyfile(folder / "attempt.json", summary / "attempt.json")
-                for filename in REPLAY_OUTPUTS[grid]:
+                for filename in _stage_files(stage, grid):
+                    (summary / filename).parent.mkdir(parents=True, exist_ok=True)
                     shutil.copyfile(folder / "output" / filename, summary / filename)
             else:
                 for filename in ("metrics.json", "resources.csv"):
@@ -572,17 +691,23 @@ if modal is not None:
         return run_attempt(REMOTE_REPO, VOLUME_ROOT, volume.commit, stage="preflight", provenance=provenance)
 
     @app.function(**resources, gpu=GPU, timeout=24 * 3600)
-    def run_gpu(stage, rates, pilot_attempt, provenance, grid="original"):
+    def run_gpu(stage, rates, pilot_attempt, provenance, grid="original", verification_attempt=None,
+                initial_attempt=None):
         volume.reload()
         return run_attempt(REMOTE_REPO, VOLUME_ROOT, volume.commit, stage=stage, rates=rates,
-                           pilot_attempt=pilot_attempt, provenance=provenance, grid=grid)
+                           pilot_attempt=pilot_attempt, provenance=provenance, grid=grid,
+                           verification_attempt=verification_attempt, initial_attempt=initial_attempt)
 
     @app.local_entrypoint()
-    def main(stage: str = "preflight", pilot_attempt: str = "", recover_attempt: str = "", grid: str = "original"):
+    def main(stage: str = "preflight", pilot_attempt: str = "", recover_attempt: str = "", grid: str = "original",
+             verification_attempt: str = "", initial_attempt: str = ""):
         """Run one stage or retrieve the small artifacts of an existing attempt."""
         _check_grid(stage, grid)
         if stage not in STAGES or (stage in PILOT_DEPENDENT) != bool(pilot_attempt):
-            raise ValueError(f"Choose a stage from {STAGES}. Replay and midpoint require --pilot-attempt.")
+            raise ValueError(f"Choose a stage from {STAGES}. {PILOT_DEPENDENT} require --pilot-attempt.")
+        if ((stage == "saved-train") != bool(verification_attempt)
+                or (stage == "saved-train") != bool(initial_attempt)):
+            raise ValueError("Supply --verification-attempt and --initial-attempt for saved-train")
         repo = Path(__file__).resolve().parents[1]
 
         def receive(record):
@@ -609,7 +734,8 @@ if modal is not None:
                 rates = json.loads(subprocess.check_output(["modal", "billing", "rates", "--json"], text=True))
                 print(f"Requesting one {GPU}, {CPU} CPU cores and {MEMORY_MIB} MiB "
                       f"at ${hourly_rate(rates):.6f}/hour", flush=True)
-                receive(run_gpu.remote(stage, rates, pilot_attempt or None, provenance, grid))
+                extra = (verification_attempt, initial_attempt) if stage == "saved-train" else ()
+                receive(run_gpu.remote(stage, rates, pilot_attempt or None, provenance, grid, *extra))
         except Exception:
             print(f"Attempt recovery: modal volume ls {VOLUME_NAME} /\n"
                   "modal run scripts/modal_countdown.py --recover-attempt <attempt-id>", file=sys.stderr)

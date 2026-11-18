@@ -96,6 +96,24 @@ Add `--grid low` to the Modal command to test 5e-8, 1e-7, 1.5e-7, 2e-7, 3e-7, 5e
 
 The smaller-rate replay also rescores every successful response from frozen-sampler batches 2–16. Their arithmetic mean importance weight estimates the ratio of the updated policy's success probability to the sampler's on this prompt distribution. Its standard error groups the eight draws from each sampled puzzle together. The tables, per-response measurements, selection decision and timing are saved under `results/midway/replay/low/`.
 
+### Continue from saved batches
+
+The [research-log amendment](docs/research-log.md) selects 1.5e-7 after observing 98.9579% retention. All 16 batches were drawn from the frozen initial model. Each new trajectory starts at the pinned initial weights and calls the trainer's SGD update on the same 32 puzzles × 8 responses in each batch.
+
+```bash
+pilot=pilot-20261118T190958601132Z-b80c6ef23f1c
+initial=initial-eval-20261118T181708561859Z-1b109c9b9a06
+modal run --detach scripts/modal_countdown.py --stage saved-verify --pilot-attempt "$pilot"
+modal run --detach scripts/modal_countdown.py --stage saved-train --pilot-attempt "$pilot" \
+  --verification-attempt "$verified" --initial-attempt "$initial"
+modal run --detach scripts/modal_countdown.py --stage saved-validation --pilot-attempt "$trained"
+modal run --detach scripts/modal_countdown.py --stage midpoint --pilot-attempt "$trained"
+```
+
+Set `verified` and `trained` to the completed Volume attempt IDs returned by the first two commands. Verification replays Count at 0.001 and compares the 16 gradient norms and all 4,096 full-response log importance weights with the original pilot. Training compares Count, SNIS and Uncorrected at 1.5e-7 and 3e-7. The runs measure the probability of the literal first token `<` across the 128 validation prompts and estimate pass@1 at updates 4, 8 and 16 from the two saved initial-model validation pools. The importance-sampled estimate averages reward times the full-response probability ratio over the 2,048 responses. Effective sample size measures concentration of the weights.
+
+Only Count at 1.5e-7 saves a step-16 checkpoint. Fresh validation uses seed 18, 128 puzzles and eight new responses per puzzle. The midpoint uses the same checkpoint and the eight-puzzle midpoint panel. Checkpoints, raw generated responses and score arrays stay on the Volume. Recover a completed attempt after a disconnect with `--recover-attempt` before considering a new job.
+
 ## Experiment conventions
 
 For a prompt with binary rewards $r_i$, let $K=\sum_i r_i$, $W_i=\pi_\theta(y_i\mid x)/\nu(y_i\mid x)$ and $S_i=\nabla_\theta\log\pi_\theta(y_i\mid x)$. The two primary estimators are
