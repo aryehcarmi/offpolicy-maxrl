@@ -108,29 +108,32 @@ def test_midpoint_recognizes_pilot_gpu_name_alias(launcher, tmp_path):
     assert launcher._pilot_input(tmp_path, pilot.name, "A10") == pilot / "output"
 
 
-def test_replay_hashes_saved_batches_and_run_inputs_before_scoring(launcher, tmp_path):
+@pytest.mark.parametrize("grid,last_step", [("original", 2), ("low", 16)])
+def test_replay_hashes_saved_batches_and_run_inputs_before_scoring(launcher, tmp_path, grid, last_step):
     folder = tmp_path / "source-pilot"
     output = folder / "output"
     (output / "responses").mkdir(parents=True)
     (output / "run.json").write_text(json.dumps({"manifest_sha256": launcher.MANIFEST_SHA256}))
-    inputs = ("run.json", "metrics.jsonl", "responses/train-000001.jsonl", "responses/train-000002.jsonl")
+    shards = [f"responses/train-{step:06d}.jsonl" for step in range(1, last_step + 1)]
+    inputs = ("run.json", "metrics.jsonl", *shards)
     for name in inputs[1:]:
         (output / name).write_text(name)
     record = {"attempt_id": folder.name, "stage": "pilot", "status": "completed", "gpu_name": "NVIDIA A10",
               "manifest_sha256": launcher.MANIFEST_SHA256,
               "sha256": {f"output/{name}": launcher._digest(output / name) for name in inputs}}
     (folder / "attempt.json").write_text(json.dumps(record))
-    pilot = launcher._pilot_input(tmp_path, folder.name, "A10", "replay")
+    pilot = launcher._pilot_input(tmp_path, folder.name, "A10", "replay", grid)
     out = tmp_path / "scratch"
-    assert launcher.job_commands("replay", REPO, tmp_path / "manifest.json", out, 2.5, pilot) == [[
+    grid_args = ["--grid", "low"] if grid == "low" else []
+    assert launcher.job_commands("replay", REPO, tmp_path / "manifest.json", out, 2.5, pilot, grid) == [[
         str(REPO / ".venv/bin/python"), "-m", "maxrl.replay", "--pilot", str(output), "--out", str(out),
-        "--device", "cuda", "--hourly-usd", "2.5",
+        "--device", "cuda", "--hourly-usd", "2.5", *grid_args,
     ]]
     for name in inputs:
         original = (output / name).read_bytes()
         (output / name).write_bytes(original + b" ")
         with pytest.raises(ValueError, match="SHA-256 mismatch"):
-            launcher._pilot_input(tmp_path, folder.name, "A10", "replay")
+            launcher._pilot_input(tmp_path, folder.name, "A10", "replay", grid)
         (output / name).write_bytes(original)
 
 
@@ -262,20 +265,25 @@ class MemoryVolume:
         yield self.content[str(path).lstrip("/")]
 
 
-def test_replay_publishes_only_rates_diagnostics_and_provenance(launcher, tmp_path):
+@pytest.mark.parametrize("grid", [None, "original", "low"], ids=["legacy", "original", "low"])
+def test_replay_publishes_only_rates_diagnostics_and_provenance(launcher, tmp_path, grid):
     results = {"rates.csv": b"rate,prediction\n", "heldout.jsonl": b"{}\n", "replay.json": b"{}",
                "resources.csv": b"phase,seconds\n"}
+    if grid == "low":
+        results["successes.jsonl"] = b'{"sample_id":"step16"}\n'
     files = {f"output/{name}": payload for name, payload in results.items()}
     files["run.log"] = b"completed replay"
     inventory = {name: hashlib.sha256(data).hexdigest() for name, data in files.items()}
     inventory["output/checkpoints/model.safetensors"] = "unavailable on laptop"
     attempt = "replay-123"
     record = {"attempt_id": attempt, "stage": "replay", "status": "completed", "sha256": inventory}
+    if grid is not None:
+        record["grid"] = grid
     files["attempt.json"] = json.dumps(record).encode()
     volume = MemoryVolume({f"{attempt}/{name}": data for name, data in files.items()})
     downloaded = launcher.download_attempt(record, tmp_path, volume)
     assert not (downloaded / "output/checkpoints").exists()
-    published = tmp_path / "results/midway/replay"
+    published = tmp_path / "results/midway/replay" / (grid or "original")
     assert {p.name: p.read_bytes() for p in published.iterdir()} == {**results, "attempt.json": files["attempt.json"]}
 
 
@@ -378,7 +386,8 @@ def test_entrypoint_gates_single_gpu_job_on_preflight(cpu_ok, rates, monkeypatch
         events.append("billing")
         return json.dumps(rates)
 
-    def gpu(stage, price_list, pilot, source):
+    def gpu(stage, price_list, pilot, source, grid):
+        assert grid == "original"
         assert (stage, price_list, pilot) == ("initial-eval", rates, None)
         assert source == PROVENANCE
         events.append("gpu")

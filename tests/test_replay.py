@@ -17,7 +17,7 @@ from maxrl.evaluate import record_groups
 from maxrl.metrics import accuracy
 from maxrl.model import checkpoint_id, load_policy, sequence_logprobs
 from maxrl.prompts import prompt_metadata
-from maxrl.replay import RATES, replay, rounding_stats, select_rate
+from maxrl.replay import LOW_RATES, RATES, replay, rounding_stats, select_rate
 from maxrl.schema import Response
 from maxrl.train import update_policy
 
@@ -51,6 +51,19 @@ def test_gate_stops_if_all_rates_fail_heldout_coverage():
         row["heldout_fraction_within_0p1"] = .9
     chosen, reason = select_rate(rows)
     assert chosen is None and reason
+
+
+def test_low_grid_rechecks_rounding_only_at_largest_qualifying_rate():
+    rows = [{"rate": rate, "realized_over_predicted": .5, "heldout_fraction_within_0p1": .95,
+             "rounding_projection_fraction": .99} for rate in LOW_RATES]
+    rows[-1]["heldout_fraction_within_0p1"] = .94
+    assert select_rate(rows, "low") == (5e-7, None)
+    rows[-2]["rounding_projection_fraction"] = .98999
+    chosen, reason = select_rate(rows, "low")
+    assert chosen is None and "99%" in reason
+    for row in rows:
+        row["realized_over_predicted"] = .49
+    assert select_rate(rows, "low")[0] is None
 
 
 def test_rounding_compares_actual_displacement_with_intended_fp64_step():
@@ -93,7 +106,8 @@ def log_weights(model, rows):
                          for r in rows])
 
 
-def test_replay_matches_independent_trainer_steps_and_every_heldout_weight(tiny, tmp_path):
+@pytest.mark.parametrize("grid,rates", [("original", RATES), ("low", LOW_RATES)])
+def test_replay_matches_independent_trainer_steps_and_every_heldout_weight(tiny, tmp_path, grid, rates):
     base, _ = load_policy(tiny, device="cpu")
     identity = checkpoint_id(tiny)
     first = make_batch(base, identity, 1, [[.5, 1.5], [1, 1]], [[1, 1], [0, 0]])
@@ -101,7 +115,14 @@ def test_replay_matches_independent_trainer_steps_and_every_heldout_weight(tiny,
     heldout_rows = [row for group in heldout for row in group]
     pilot, out = tmp_path / "pilot", tmp_path / "replay"
     pilot.mkdir()
-    for step, groups in enumerate([first, heldout], 1):
+    batches = [first, heldout]
+    if grid == "low":
+        for step in range(3, 17):
+            pool = f"run/train/{step}"
+            batches.append([[replace(row, pool=pool, sample_id=f"{pool}/{j}/{i}",
+                                     reward=int(j == 0 and (step % 2 == 0 or i == 0)))
+                             for i, row in enumerate(group)] for j, group in enumerate(heldout)])
+    for step, groups in enumerate(batches, 1):
         record_groups(pilot / "responses" / f"train-{step:06d}.jsonl", groups)
     cfg = replace(load_config(Path(__file__).parents[1] / "configs/pilot.json"),
                   model=tiny, revision=None, prompts_per_step=2, responses_per_prompt=2)
@@ -120,14 +141,14 @@ def test_replay_matches_independent_trainer_steps_and_every_heldout_weight(tiny,
                        **accuracy(groups), **stats})
     (pilot / "metrics.jsonl").write_text("".join(json.dumps(row) + "\n" for row in events))
 
-    replay(pilot, out, device="cpu")
+    replay(pilot, out, device="cpu", grid=grid)
     summary = json.loads((out / "replay.json").read_text())
     assert summary["gradient_norm"] == pytest.approx(events[0]["gradient_norm"], rel=1e-6)
     with (out / "rates.csv").open() as stream:
         table = list(csv.DictReader(stream))
     items = [json.loads(line) for line in (out / "heldout.jsonl").read_text().splitlines()]
-    assert [float(r["rate"]) for r in table] == list(RATES)
-    assert len(items) == len(RATES) * len(heldout_rows)
+    assert [float(r["rate"]) for r in table] == list(rates)
+    assert len(items) == len(rates) * len(heldout_rows)
 
     # Independent objective: only group 1 has successes. Average both successes,
     # then average over both prompts, including the prompt with zero successes.
@@ -157,3 +178,34 @@ def test_replay_matches_independent_trainer_steps_and_every_heldout_weight(tiny,
         for q, label in [(0., "min"), (.025, "p025"), (.5, "p50"), (.975, "p975"), (1., "max")]:
             assert float(record[f"log_weight_{label}"]) == pytest.approx(np.quantile(values, q))
         assert float(record["heldout_fraction_within_0p1"]) == np.mean(np.abs(values) <= .1)
+
+
+        if grid == "low":
+            pooled = [json.loads(line) for line in (out / "successes.jsonl").read_text().splitlines()]
+            measured = {r["sample_id"]: r for r in pooled if r["rate"] == rate}
+            expected = {row.sample_id for batch in batches[1:] for group in batch for row in group if row.reward}
+            assert set(measured) == expected
+            # Later batches repeat the same prompts and token sequences with new success labels.
+            sums, counts, all_weights = [], [], []
+            for step, batch in enumerate(batches[1:], 2):
+                for j, group in enumerate(batch):
+                    weights = []
+                    for i, row in enumerate(group):
+                        if row.reward:
+                            obs = measured[row.sample_id]
+                            assert (obs["step"], obs["puzzle_id"], obs["reward"]) == (step, row.puzzle_id, 1)
+                            val = values[2*j + i]
+                            assert obs["log_weight"] == pytest.approx(val, abs=1e-9)
+                            weights.append(math.exp(val))
+                    sums.append(sum(weights))
+                    counts.append(len(weights))
+                    all_weights.extend(weights)
+            n = len(all_weights)
+            mean = np.mean(all_weights)
+            residuals = np.array(sums) - np.array(counts) * mean
+            cluster_se = math.sqrt(len(residuals)) * np.std(residuals, ddof=1) / n
+            assert int(record["pooled_success_count"]) == n
+            assert int(record["pooled_prompt_groups"]) == 30
+            assert float(record["pooled_mean_weight_success"]) == pytest.approx(mean)
+            assert float(record["pooled_mean_weight_success_se"]) == pytest.approx(cluster_se)
+            assert float(record["pooled_mean_weight_success_iid_se"]) == pytest.approx(np.std(all_weights, ddof=1) / math.sqrt(n))

@@ -25,8 +25,13 @@ STAGES = ("preflight", "initial-eval", "pilot", *PILOT_DEPENDENT)
 TEST_SDK = "/opt/countdown-test-sdk"
 PILOT_INPUTS = ("run.json", "metrics.jsonl", "resources.csv")
 BUDGET_CONFIGS = ("pilot.json", "screen.json", "tune.json", "main.json")
-REPLAY_INPUTS = ("run.json", "metrics.jsonl", "responses/train-000001.jsonl", "responses/train-000002.jsonl")
-REPLAY_OUTPUTS = ("rates.csv", "heldout.jsonl", "replay.json", "resources.csv")
+REPLAY_FILES = ("rates.csv", "heldout.jsonl", "replay.json", "resources.csv")
+REPLAY_OUTPUTS = {"original": REPLAY_FILES, "low": (*REPLAY_FILES, "successes.jsonl")}
+
+
+def _check_grid(stage, grid):
+    if grid not in REPLAY_OUTPUTS or (stage != "replay" and grid != "original"):
+        raise ValueError("Use --grid original or --grid low with the replay stage")
 
 
 def _digest(path):
@@ -102,7 +107,7 @@ def verify_pilot_checkpoints(output, saved, inventory, *, completed):
     return verified
 
 
-def job_commands(stage, repo, manifest, output, hourly_usd, pilot_run=None):
+def job_commands(stage, repo, manifest, output, hourly_usd, pilot_run=None, grid="original"):
     """Return exactly the documented commands for one GPU job; no shell or stage chaining."""
     if hourly_usd is None or not math.isfinite(hourly_usd) or hourly_usd <= 0:
         raise ValueError("A positive, finite total hourly machine rate is required")
@@ -116,8 +121,9 @@ def job_commands(stage, repo, manifest, output, hourly_usd, pilot_run=None):
     if stage not in PILOT_DEPENDENT or pilot_run is None:
         raise ValueError(f"Expected a GPU stage with its required pilot input, got {stage!r}")
     if stage == "replay":
+        grid_args = ["--grid", grid] if grid != "original" else []
         return [[python, "-m", "maxrl.replay", "--pilot", str(pilot_run), "--out", str(output),
-                 "--device", "cuda", *price]]
+                 "--device", "cuda", *price, *grid_args]]
     diag = [python, "-m", "maxrl.diagnostics"]
     pools = ["--pools", str(output)]
     return [
@@ -208,7 +214,7 @@ def _preflight(repo, volume_root, scratch, emit, commit):
     return digest
 
 
-def _pilot_input(volume_root, pilot_attempt, assigned_gpu, stage="midpoint"):
+def _pilot_input(volume_root, pilot_attempt, assigned_gpu, stage="midpoint", grid="original"):
     if not pilot_attempt or Path(pilot_attempt).name != pilot_attempt or pilot_attempt in (".", ".."):
         raise ValueError(f"A {stage} job requires a pilot attempt directory name")
     folder = volume_root / pilot_attempt
@@ -222,7 +228,9 @@ def _pilot_input(volume_root, pilot_attempt, assigned_gpu, stage="midpoint"):
     if stage == "replay":
         if record["attempt_id"] != pilot_attempt or record["manifest_sha256"] != MANIFEST_SHA256:
             raise ValueError("Replay source pilot attempt or data manifest identity mismatch")
-        for name in REPLAY_INPUTS:
+        last_step = 16 if grid == "low" else 2
+        shards = [f"responses/train-{step:06d}.jsonl" for step in range(1, last_step + 1)]
+        for name in ("run.json", "metrics.jsonl", *shards):
             key = f"output/{name}"
             if record["sha256"].get(key) != _digest(folder / key):
                 raise ValueError(f"Replay source SHA-256 mismatch: {key}")
@@ -256,10 +264,11 @@ def git_provenance(repo):
 
 
 def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str, provenance: dict,
-                rates: dict | None = None, pilot_attempt: str | None = None) -> dict:
+                rates: dict | None = None, pilot_attempt: str | None = None, grid: str = "original") -> dict:
     """Keep writable experiment files on local disk and preserve one Volume folder per invocation."""
     if stage not in STAGES or (stage not in PILOT_DEPENDENT and pilot_attempt is not None):
         raise ValueError(f"Invalid stage or pilot input for {stage!r}")
+    _check_grid(stage, grid)
     repo, volume_root = Path(repo).resolve(), Path(volume_root).resolve()
     started = _utc()
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
@@ -270,6 +279,8 @@ def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str, provenance
               "git_commit": provenance["git_commit"], "git_dirty": provenance["git_dirty"],
               "status": "running", "started_utc": started, "gpu_name": None, "gpu_type": None,
               "hourly_usd": None, "sha256": {}}
+    if stage == "replay":
+        record["grid"] = grid
     record_path = attempt / "attempt.json"
     log = attempt / "run.log"
     start = time.monotonic()
@@ -297,11 +308,11 @@ def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str, provenance
                      f"at ${hourly_usd:.6f}/hour")
                 _record(record_path, record)
                 commit()
-                pilot = (_pilot_input(volume_root, pilot_attempt, record["gpu_type"], stage)
+                pilot = (_pilot_input(volume_root, pilot_attempt, record["gpu_type"], stage, grid)
                          if stage in PILOT_DEPENDENT else None)
                 manifest = volume_root / "data/manifest.json"
                 record["manifest_sha256"] = verify_manifest(manifest)
-                commands = job_commands(stage, repo, manifest, output, hourly_usd, pilot)
+                commands = job_commands(stage, repo, manifest, output, hourly_usd, pilot, grid)
                 _run([repo / ".venv/bin/python", "-c", "import torch; "
                       "assert torch.cuda.is_available() and torch.cuda.device_count() == 1, 'expected one CUDA GPU'; "
                       "print(torch.__version__, torch.version.cuda, torch.cuda.get_device_name(0))"], repo, emit)
@@ -317,7 +328,7 @@ def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str, provenance
                 if not output.is_dir():
                     raise FileNotFoundError(f"Job exited without creating {output}")
                 if stage == "replay":
-                    for name in REPLAY_OUTPUTS:
+                    for name in REPLAY_OUTPUTS[grid]:
                         if not (output / name).stat().st_size:
                             raise ValueError(f"Empty replay result: {name}")
                 if stage == "pilot":
@@ -454,7 +465,7 @@ def _publish_folder(staged, target, *, keep_extra=False):
         raise FileExistsError(f"Existing local files differ: {target}")
 
 
-def _small_artifact(stage, path):
+def _small_artifact(stage, path, grid="original"):
     if path in (Path("run.log"), Path("gpu.csv")):
         return True
     if len(path.parts) < 2 or path.parts[0] != "output":
@@ -466,7 +477,7 @@ def _small_artifact(stage, path):
         return (str(relative) in (*PILOT_INPUTS, "failure.json") or
                 (relative.parent == Path("configs") and relative.name in BUDGET_CONFIGS))
     if stage == "replay":
-        return str(relative) in REPLAY_OUTPUTS
+        return str(relative) in REPLAY_OUTPUTS[grid]
     return stage == "midpoint" and relative.name in ("manifest.json", "summary.json", "provenance.json", "resources.csv")
 
 
@@ -488,6 +499,9 @@ def _pilot_summary(repo, attempt, summary):
 def download_attempt(record, repo, volume):
     """Retrieve and hash-check the small artifacts, leaving weights and raw shards on the Volume."""
     name = record["attempt_id"]
+    stage = record["stage"]
+    grid = record.get("grid", "original")
+    _check_grid(stage, grid)
     if not name or Path(name).name != name or name in (".", ".."):
         raise ValueError(f"Invalid attempt ID: {name!r}")
     folder = repo / "runs/countdown" / name
@@ -503,7 +517,7 @@ def download_attempt(record, repo, volume):
             relative = Path(filename)
             if relative.is_absolute() or ".." in relative.parts:
                 raise ValueError(f"Invalid artifact path: {filename}")
-            if not _small_artifact(record["stage"], relative):
+            if not _small_artifact(stage, relative, grid):
                 continue
             target = staged / relative
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -515,23 +529,25 @@ def download_attempt(record, repo, volume):
             if digest.hexdigest() != expected:
                 raise ValueError(f"SHA-256 mismatch: {filename}")
         _publish_folder(staged, folder, keep_extra=True)
-    stage = record["stage"]
     if stage in ("initial-eval", "pilot", "replay") and record["status"] == "completed":
         midway = repo / "results/midway"
-        midway.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(dir=midway) as tmp:
+        target = midway / stage
+        if stage == "replay":
+            target = target / grid
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=target.parent) as tmp:
             summary = Path(tmp) / stage
             summary.mkdir()
             if stage == "pilot":
                 _pilot_summary(repo, folder, summary)
             elif stage == "replay":
                 shutil.copyfile(folder / "attempt.json", summary / "attempt.json")
-                for filename in REPLAY_OUTPUTS:
+                for filename in REPLAY_OUTPUTS[grid]:
                     shutil.copyfile(folder / "output" / filename, summary / filename)
             else:
                 for filename in ("metrics.json", "resources.csv"):
                     shutil.copyfile(folder / "output" / filename, summary / filename)
-            _publish_folder(summary, midway / stage)
+            _publish_folder(summary, target)
     return folder
 
 
@@ -556,14 +572,15 @@ if modal is not None:
         return run_attempt(REMOTE_REPO, VOLUME_ROOT, volume.commit, stage="preflight", provenance=provenance)
 
     @app.function(**resources, gpu=GPU, timeout=24 * 3600)
-    def run_gpu(stage, rates, pilot_attempt, provenance):
+    def run_gpu(stage, rates, pilot_attempt, provenance, grid="original"):
         volume.reload()
         return run_attempt(REMOTE_REPO, VOLUME_ROOT, volume.commit, stage=stage, rates=rates,
-                           pilot_attempt=pilot_attempt, provenance=provenance)
+                           pilot_attempt=pilot_attempt, provenance=provenance, grid=grid)
 
     @app.local_entrypoint()
-    def main(stage: str = "preflight", pilot_attempt: str = "", recover_attempt: str = ""):
+    def main(stage: str = "preflight", pilot_attempt: str = "", recover_attempt: str = "", grid: str = "original"):
         """Run one stage or retrieve the small artifacts of an existing attempt."""
+        _check_grid(stage, grid)
         if stage not in STAGES or (stage in PILOT_DEPENDENT) != bool(pilot_attempt):
             raise ValueError(f"Choose a stage from {STAGES}. Replay and midpoint require --pilot-attempt.")
         repo = Path(__file__).resolve().parents[1]
@@ -592,7 +609,7 @@ if modal is not None:
                 rates = json.loads(subprocess.check_output(["modal", "billing", "rates", "--json"], text=True))
                 print(f"Requesting one {GPU}, {CPU} CPU cores and {MEMORY_MIB} MiB "
                       f"at ${hourly_rate(rates):.6f}/hour", flush=True)
-                receive(run_gpu.remote(stage, rates, pilot_attempt or None, provenance))
+                receive(run_gpu.remote(stage, rates, pilot_attempt or None, provenance, grid))
         except Exception:
             print(f"Attempt recovery: modal volume ls {VOLUME_NAME} /\n"
                   "modal run scripts/modal_countdown.py --recover-attempt <attempt-id>", file=sys.stderr)

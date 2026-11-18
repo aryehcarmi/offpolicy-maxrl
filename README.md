@@ -90,7 +90,11 @@ modal run --detach scripts/modal_countdown.py --stage replay \
 
 Each trial starts at the pinned initial weights and applies the trainer's first-batch SGD gradient once. The table compares the increase in the trainer's objective, with the original success weights held fixed, to the learning rate times the squared gradient norm. The second batch supplies held-out full-response log probability ratios against the actual frozen sampler. The fraction inside ±0.1 counts each response once. The projection of the float32 parameter change onto the intended step measures how much of that step survived rounding.
 
-The replay tests rates 1e-6, 3e-6, 1e-5, 3e-5, 1e-4 and 1e-3. At 1e-6, the realized increase must be within 20% of the prediction. Subject to that check, select the largest rate with at least half the predicted increase and at least 95% of held-out log ratios inside ±0.1. If either check leaves no rate, stop. The six-row table, individual held-out observations, decision and timing are saved under `results/midway/replay/`.
+The [original six-rate replay](results/midway/replay/original/rates.csv) tested 1e-6 through 1e-3. At the smallest rate, it realized 77.90% of the predicted gain and 86 of 256 held-out log ratios were inside ±0.1. This triggered that grid's 80% minimum-gain stop rule.
+
+Add `--grid low` to the Modal command to test 5e-8, 1e-7, 1.5e-7, 2e-7, 3e-7, 5e-7 and 1e-6. Select the largest rate with at least half the predicted gain and at least 95% of batch 2 log ratios inside ±0.1. Stop if none qualifies or if less than 99% of the intended step survives float32 rounding at the selected rate, measured by projection onto the intended step.
+
+The smaller-rate replay also rescores every successful response from frozen-sampler batches 2–16. Their arithmetic mean importance weight estimates the ratio of the updated policy's success probability to the sampler's on this prompt distribution. Its standard error groups the eight draws from each sampled puzzle together. The tables, per-response measurements, selection decision and timing are saved under `results/midway/replay/low/`.
 
 ## Experiment conventions
 
