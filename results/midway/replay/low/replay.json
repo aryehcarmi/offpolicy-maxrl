@@ -1,0 +1,62 @@
+{
+  "pilot_run_id": "f8612d7937024ec7839671e9f069a568",
+  "initial_checkpoint_id": "Qwen/Qwen3-0.6B@c1899de289a04d12100db370d81485cdf75e47ca",
+  "source_sha256": {
+    "run.json": "67563e6caf07264cd3df199ee74241b86c9f4d758ca47a5ac0836753a3af9c9b",
+    "metrics.jsonl": "e137a0cda9cb4d7432431d456266d135930f5f6b5861a8161ebc01f58f6d3533",
+    "responses/train-000001.jsonl": "0a77f8b20f5ff7a838162a8df09446a05abcef1910ab3700eeffd6e23e00537b",
+    "responses/train-000002.jsonl": "dee04d38b4ca7e87185e21185975d51a2e4b29bf882efb24dd93de1b3babb2e5",
+    "responses/train-000003.jsonl": "f1fcd15d95db7fdcf92adfe6695b5c50f66af7842152a519527dc1ef390b49ad",
+    "responses/train-000004.jsonl": "29adcc9d565509d9d7847f213b51ca4690a65a156b3d9dff79a8717a9bcb2ffd",
+    "responses/train-000005.jsonl": "deba486c0da5a1c34ca9cb29204f6c9a9d904b83882189403f85243e5f3e5fee",
+    "responses/train-000006.jsonl": "da6ba7a1723fa2231956019b12ea9541de53c97c3b9e53f1d14bca0d4b5cacac",
+    "responses/train-000007.jsonl": "e1247136ff5d672396d5c6892f870f74fc8bd6a6f7b495eaa7844701373b197a",
+    "responses/train-000008.jsonl": "28c1ff5395e7caef0cac3667130e3e27a090761631cb93b85c419191f9585d22",
+    "responses/train-000009.jsonl": "9cb1875251c3dadcf7068bff8234343553f98156b63033c45452de230e2ebe57",
+    "responses/train-000010.jsonl": "0e74399478fe30526eeaed61134d616f3e6b5bdb3ce513ec2d3d646ef3901eca",
+    "responses/train-000011.jsonl": "2dfe00f05b34fa27f40704c01083b87f8bce45df6c92e1b7194d83e1f286b656",
+    "responses/train-000012.jsonl": "0763ad91dc7dec4a26020bb83b673f321158258183b858d4a22663cd601275cd",
+    "responses/train-000013.jsonl": "07a284a20fa033e91745e4434ba7146c4b577d46eba12431f7791ec5d2f56916",
+    "responses/train-000014.jsonl": "33ded03ea640780a7ae163a36d3b3eb714663d0ef5ea299467e21d2b4ca04afb",
+    "responses/train-000015.jsonl": "6a0268503ae9b3286dd0d2c652c3e24897ee60de38309c09908a7fa5526a7f76",
+    "responses/train-000016.jsonl": "5e46db2e532fcc30662e161bf275b81e0fcd7306ebfd107b467265280ff78d46"
+  },
+  "hardware": {
+    "python": "3.12.3",
+    "platform": "Linux-4.19.0-gvisor-x86_64-with-glibc2.36",
+    "device": "cuda",
+    "gpu": "NVIDIA A10G",
+    "cuda": "12.8",
+    "torch": "2.8.0+cu128",
+    "transformers": "4.57.1",
+    "numpy": "2.2.6",
+    "runtime": {
+      "device": "cuda",
+      "dtype": "float32",
+      "generation_batch": 8,
+      "score_batch": 1,
+      "hourly_usd": 1.3226
+    }
+  },
+  "grid": "low",
+  "rates": [
+    5e-08,
+    1e-07,
+    1.5e-07,
+    2e-07,
+    3e-07,
+    5e-07,
+    1e-06
+  ],
+  "gradient_norm": 361.0347900390625,
+  "pilot_gradient_norm": 361.0318908691406,
+  "chosen_rate": null,
+  "stop_reason": "The largest eligible rate (1.5e-07) retained less than 99% of the intended step.",
+  "objective": "Sum over first-batch successes of initial detached W times current sequence log probability divided by K and by the total number of prompts. K is the number of successes on that prompt.",
+  "prediction": "rate times squared L2 norm of the trainer's first-batch gradient",
+  "count_weight_objective_change": "Auxiliary change in the sum of updated importance weights over first-batch successes divided by K and the number of prompts. Empty if outside float64 range.",
+  "heldout": "Natural log of updated policy probability over recorded sampler probability for each response in the second batch, including sampled EOS. Quantiles use linear interpolation. Raw weights are averaged arithmetically within each reward class.",
+  "rounding": "Let a = updated float32 parameters minus their initial values, and d = -rate times the initial loss gradient. Projection is dot(a,d)/dot(d,d), norm fraction is ||a||/||d||, changed fraction is nnz(a)/nnz(d). Differences and sums use float64.",
+  "selection": "Choose the largest rate with realized/predicted >= 0.5 and at least 95% of individual batch-2 log weights inside [-0.1, 0.1]. Stop if the selected rate retains less than 99% of the intended step by projection.",
+  "pooled_success": "Arithmetic mean of importance weights over successful frozen-sampler responses in batches 2\u201316. Estimates the updated-to-original success probability ratio. Primary SE uses one cluster per (batch, puzzle), including empty-success groups, with G/(G-1) correction. The iid SE treats individual successes as independent."
+}

@@ -1,0 +1,702 @@
+{
+  "rate": 1e-06,
+  "source_attempt": "pilot-20261118T190958601132Z-b80c6ef23f1c",
+  "batch": 2,
+  "source_file": "output/responses/train-000002.jsonl",
+  "source_sha256": "dee04d38b4ca7e87185e21185975d51a2e4b29bf882efb24dd93de1b3babb2e5",
+  "original_heldout_sha256": "fe1118d4a32adc13aacbe2b6c5228ae26a35a66247778cb91b675c519fa5fd0c",
+  "tokenizer_url": "https://huggingface.co/Qwen/Qwen3-0.6B/resolve/c1899de289a04d12100db370d81485cdf75e47ca/tokenizer.json",
+  "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+  "partition": "Below the midpoint of the largest adjacent gap in the 256 observed full-response log weights.",
+  "cutoff": -0.34433937095125966,
+  "gap": 0.22990406068625724,
+  "cluster_range": [
+    -0.6943305635977679,
+    -0.4592914012943883
+  ],
+  "other_range": [
+    -0.22938734060813104,
+    0.6702349191216683
+  ],
+  "group_statistics": {
+    "cluster": {
+      "responses": 73,
+      "successes": 5,
+      "distinct_puzzles": 29,
+      "median_tokens": 19,
+      "reached_cap": 0,
+      "starts_with_think_tag": 0,
+      "contains_answer_tag": 73
+    },
+    "other": {
+      "responses": 183,
+      "successes": 16,
+      "distinct_puzzles": 32,
+      "median_tokens": 180,
+      "reached_cap": 41,
+      "starts_with_think_tag": 0,
+      "contains_answer_tag": 117
+    }
+  },
+  "prefix_counts": {
+    "1": [
+      {
+        "ids": [
+          27
+        ],
+        "text": "<",
+        "cluster": 73,
+        "other": 0
+      },
+      {
+        "ids": [
+          1249
+        ],
+        "text": "To",
+        "cluster": 0,
+        "other": 134
+      },
+      {
+        "ids": [
+          1654
+        ],
+        "text": "We",
+        "cluster": 0,
+        "other": 22
+      },
+      {
+        "ids": [
+          10061
+        ],
+        "text": "Let",
+        "cluster": 0,
+        "other": 20
+      },
+      {
+        "ids": [
+          5338
+        ],
+        "text": "First",
+        "cluster": 0,
+        "other": 2
+      },
+      {
+        "ids": [
+          8420
+        ],
+        "text": "Here",
+        "cluster": 0,
+        "other": 2
+      },
+      {
+        "ids": [
+          785
+        ],
+        "text": "The",
+        "cluster": 0,
+        "other": 2
+      },
+      {
+        "ids": [
+          16429
+        ],
+        "text": "Using",
+        "cluster": 0,
+        "other": 1
+      }
+    ],
+    "2": [
+      {
+        "ids": [
+          27,
+          9217
+        ],
+        "text": "<answer",
+        "cluster": 73,
+        "other": 0
+      },
+      {
+        "ids": [
+          1249,
+          1855
+        ],
+        "text": "To create",
+        "cluster": 0,
+        "other": 110
+      },
+      {
+        "ids": [
+          10061,
+          594
+        ],
+        "text": "Let's",
+        "cluster": 0,
+        "other": 20
+      },
+      {
+        "ids": [
+          1654,
+          525
+        ],
+        "text": "We are",
+        "cluster": 0,
+        "other": 15
+      },
+      {
+        "ids": [
+          1249,
+          11625
+        ],
+        "text": "To solve",
+        "cluster": 0,
+        "other": 11
+      },
+      {
+        "ids": [
+          1249,
+          1352
+        ],
+        "text": "To form",
+        "cluster": 0,
+        "other": 7
+      },
+      {
+        "ids": [
+          1654,
+          646
+        ],
+        "text": "We can",
+        "cluster": 0,
+        "other": 4
+      },
+      {
+        "ids": [
+          1654,
+          1184
+        ],
+        "text": "We need",
+        "cluster": 0,
+        "other": 3
+      },
+      {
+        "ids": [
+          1249,
+          1477
+        ],
+        "text": "To find",
+        "cluster": 0,
+        "other": 3
+      }
+    ],
+    "3": [
+      {
+        "ids": [
+          27,
+          9217,
+          29
+        ],
+        "text": "<answer>",
+        "cluster": 70,
+        "other": 0
+      },
+      {
+        "ids": [
+          27,
+          9217,
+          2235
+        ],
+        "text": "<answer>(",
+        "cluster": 2,
+        "other": 0
+      },
+      {
+        "ids": [
+          27,
+          9217,
+          397
+        ],
+        "text": "<answer>\n",
+        "cluster": 1,
+        "other": 0
+      },
+      {
+        "ids": [
+          1249,
+          1855,
+          458
+        ],
+        "text": "To create an",
+        "cluster": 0,
+        "other": 106
+      },
+      {
+        "ids": [
+          1654,
+          525,
+          2661
+        ],
+        "text": "We are given",
+        "cluster": 0,
+        "other": 15
+      },
+      {
+        "ids": [
+          1249,
+          11625,
+          279
+        ],
+        "text": "To solve the",
+        "cluster": 0,
+        "other": 11
+      },
+      {
+        "ids": [
+          10061,
+          594,
+          990
+        ],
+        "text": "Let's use",
+        "cluster": 0,
+        "other": 7
+      },
+      {
+        "ids": [
+          10061,
+          594,
+          11625
+        ],
+        "text": "Let's solve",
+        "cluster": 0,
+        "other": 7
+      },
+      {
+        "ids": [
+          1249,
+          1352,
+          458
+        ],
+        "text": "To form an",
+        "cluster": 0,
+        "other": 5
+      },
+      {
+        "ids": [
+          1249,
+          1855,
+          279
+        ],
+        "text": "To create the",
+        "cluster": 0,
+        "other": 4
+      },
+      {
+        "ids": [
+          10061,
+          594,
+          1855
+        ],
+        "text": "Let's create",
+        "cluster": 0,
+        "other": 3
+      }
+    ],
+    "4": [
+      {
+        "ids": [
+          27,
+          9217,
+          29,
+          320
+        ],
+        "text": "<answer> (",
+        "cluster": 56,
+        "other": 0
+      },
+      {
+        "ids": [
+          27,
+          9217,
+          29,
+          220
+        ],
+        "text": "<answer> ",
+        "cluster": 13,
+        "other": 0
+      },
+      {
+        "ids": [
+          27,
+          9217,
+          2235,
+          24
+        ],
+        "text": "<answer>(9",
+        "cluster": 1,
+        "other": 0
+      },
+      {
+        "ids": [
+          27,
+          9217,
+          29,
+          1781
+        ],
+        "text": "<answer> ((",
+        "cluster": 1,
+        "other": 0
+      },
+      {
+        "ids": [
+          27,
+          9217,
+          2235,
+          20
+        ],
+        "text": "<answer>(5",
+        "cluster": 1,
+        "other": 0
+      },
+      {
+        "ids": [
+          27,
+          9217,
+          397,
+          7
+        ],
+        "text": "<answer>\n(",
+        "cluster": 1,
+        "other": 0
+      },
+      {
+        "ids": [
+          1249,
+          1855,
+          458,
+          23606
+        ],
+        "text": "To create an equation",
+        "cluster": 0,
+        "other": 105
+      },
+      {
+        "ids": [
+          1654,
+          525,
+          2661,
+          279
+        ],
+        "text": "We are given the",
+        "cluster": 0,
+        "other": 13
+      },
+      {
+        "ids": [
+          1249,
+          11625,
+          279,
+          3491
+        ],
+        "text": "To solve the problem",
+        "cluster": 0,
+        "other": 8
+      },
+      {
+        "ids": [
+          10061,
+          594,
+          990,
+          279
+        ],
+        "text": "Let's use the",
+        "cluster": 0,
+        "other": 7
+      },
+      {
+        "ids": [
+          1249,
+          1352,
+          458,
+          23606
+        ],
+        "text": "To form an equation",
+        "cluster": 0,
+        "other": 5
+      },
+      {
+        "ids": [
+          1249,
+          1855,
+          279,
+          23606
+        ],
+        "text": "To create the equation",
+        "cluster": 0,
+        "other": 4
+      },
+      {
+        "ids": [
+          10061,
+          594,
+          11625,
+          279
+        ],
+        "text": "Let's solve the",
+        "cluster": 0,
+        "other": 4
+      },
+      {
+        "ids": [
+          10061,
+          594,
+          1855,
+          458
+        ],
+        "text": "Let's create an",
+        "cluster": 0,
+        "other": 3
+      }
+    ],
+    "8": [
+      {
+        "ids": [
+          27,
+          9217,
+          29,
+          320,
+          21,
+          16,
+          481,
+          220
+        ],
+        "text": "<answer> (61 - ",
+        "cluster": 4,
+        "other": 0
+      },
+      {
+        "ids": [
+          27,
+          9217,
+          29,
+          320,
+          17,
+          15,
+          488,
+          220
+        ],
+        "text": "<answer> (20 + ",
+        "cluster": 3,
+        "other": 0
+      },
+      {
+        "ids": [
+          27,
+          9217,
+          29,
+          320,
+          18,
+          20,
+          488,
+          220
+        ],
+        "text": "<answer> (35 + ",
+        "cluster": 3,
+        "other": 0
+      },
+      {
+        "ids": [
+          27,
+          9217,
+          29,
+          320,
+          23,
+          23,
+          481,
+          220
+        ],
+        "text": "<answer> (88 - ",
+        "cluster": 3,
+        "other": 0
+      },
+      {
+        "ids": [
+          27,
+          9217,
+          29,
+          320,
+          20,
+          17,
+          481,
+          220
+        ],
+        "text": "<answer> (52 - ",
+        "cluster": 3,
+        "other": 0
+      },
+      {
+        "ids": [
+          27,
+          9217,
+          29,
+          320,
+          19,
+          23,
+          481,
+          220
+        ],
+        "text": "<answer> (48 - ",
+        "cluster": 2,
+        "other": 0
+      },
+      {
+        "ids": [
+          27,
+          9217,
+          29,
+          320,
+          17,
+          17,
+          481,
+          220
+        ],
+        "text": "<answer> (22 - ",
+        "cluster": 2,
+        "other": 0
+      },
+      {
+        "ids": [
+          27,
+          9217,
+          29,
+          320,
+          17,
+          18,
+          488,
+          220
+        ],
+        "text": "<answer> (23 + ",
+        "cluster": 2,
+        "other": 0
+      },
+      {
+        "ids": [
+          1249,
+          1855,
+          458,
+          23606,
+          1667,
+          279,
+          5109,
+          508
+        ],
+        "text": "To create an equation using the numbers [",
+        "cluster": 0,
+        "other": 61
+      },
+      {
+        "ids": [
+          1249,
+          1855,
+          458,
+          23606,
+          429,
+          16819,
+          220,
+          16
+        ],
+        "text": "To create an equation that equals 1",
+        "cluster": 0,
+        "other": 7
+      },
+      {
+        "ids": [
+          1249,
+          1855,
+          458,
+          23606,
+          429,
+          16819,
+          220,
+          20
+        ],
+        "text": "To create an equation that equals 5",
+        "cluster": 0,
+        "other": 6
+      },
+      {
+        "ids": [
+          1249,
+          1855,
+          458,
+          23606,
+          429,
+          16819,
+          220,
+          19
+        ],
+        "text": "To create an equation that equals 4",
+        "cluster": 0,
+        "other": 6
+      },
+      {
+        "ids": [
+          1249,
+          11625,
+          279,
+          3491,
+          1667,
+          279,
+          5109,
+          508
+        ],
+        "text": "To solve the problem using the numbers [",
+        "cluster": 0,
+        "other": 6
+      },
+      {
+        "ids": [
+          1249,
+          1855,
+          458,
+          23606,
+          429,
+          16819,
+          220,
+          24
+        ],
+        "text": "To create an equation that equals 9",
+        "cluster": 0,
+        "other": 4
+      },
+      {
+        "ids": [
+          1249,
+          1352,
+          458,
+          23606,
+          1667,
+          279,
+          5109,
+          508
+        ],
+        "text": "To form an equation using the numbers [",
+        "cluster": 0,
+        "other": 4
+      },
+      {
+        "ids": [
+          10061,
+          594,
+          11625,
+          279,
+          3491,
+          3019,
+          553,
+          3019
+        ],
+        "text": "Let's solve the problem step by step",
+        "cluster": 0,
+        "other": 4
+      }
+    ]
+  }
+}
