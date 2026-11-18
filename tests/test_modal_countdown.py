@@ -108,6 +108,32 @@ def test_midpoint_recognizes_pilot_gpu_name_alias(launcher, tmp_path):
     assert launcher._pilot_input(tmp_path, pilot.name, "A10") == pilot / "output"
 
 
+def test_replay_hashes_saved_batches_and_run_inputs_before_scoring(launcher, tmp_path):
+    folder = tmp_path / "source-pilot"
+    output = folder / "output"
+    (output / "responses").mkdir(parents=True)
+    (output / "run.json").write_text(json.dumps({"manifest_sha256": launcher.MANIFEST_SHA256}))
+    inputs = ("run.json", "metrics.jsonl", "responses/train-000001.jsonl", "responses/train-000002.jsonl")
+    for name in inputs[1:]:
+        (output / name).write_text(name)
+    record = {"attempt_id": folder.name, "stage": "pilot", "status": "completed", "gpu_name": "NVIDIA A10",
+              "manifest_sha256": launcher.MANIFEST_SHA256,
+              "sha256": {f"output/{name}": launcher._digest(output / name) for name in inputs}}
+    (folder / "attempt.json").write_text(json.dumps(record))
+    pilot = launcher._pilot_input(tmp_path, folder.name, "A10", "replay")
+    out = tmp_path / "scratch"
+    assert launcher.job_commands("replay", REPO, tmp_path / "manifest.json", out, 2.5, pilot) == [[
+        str(REPO / ".venv/bin/python"), "-m", "maxrl.replay", "--pilot", str(output), "--out", str(out),
+        "--device", "cuda", "--hourly-usd", "2.5",
+    ]]
+    for name in inputs:
+        original = (output / name).read_bytes()
+        (output / name).write_bytes(original + b" ")
+        with pytest.raises(ValueError, match="SHA-256 mismatch"):
+            launcher._pilot_input(tmp_path, folder.name, "A10", "replay")
+        (output / name).write_bytes(original)
+
+
 def write_data_fixture(folder):
     folder.mkdir(parents=True)
     shard = folder / "validation.jsonl"
@@ -234,6 +260,23 @@ class MemoryVolume:
 
     def read_file(self, path):
         yield self.content[str(path).lstrip("/")]
+
+
+def test_replay_publishes_only_rates_diagnostics_and_provenance(launcher, tmp_path):
+    results = {"rates.csv": b"rate,prediction\n", "heldout.jsonl": b"{}\n", "replay.json": b"{}",
+               "resources.csv": b"phase,seconds\n"}
+    files = {f"output/{name}": payload for name, payload in results.items()}
+    files["run.log"] = b"completed replay"
+    inventory = {name: hashlib.sha256(data).hexdigest() for name, data in files.items()}
+    inventory["output/checkpoints/model.safetensors"] = "unavailable on laptop"
+    attempt = "replay-123"
+    record = {"attempt_id": attempt, "stage": "replay", "status": "completed", "sha256": inventory}
+    files["attempt.json"] = json.dumps(record).encode()
+    volume = MemoryVolume({f"{attempt}/{name}": data for name, data in files.items()})
+    downloaded = launcher.download_attempt(record, tmp_path, volume)
+    assert not (downloaded / "output/checkpoints").exists()
+    published = tmp_path / "results/midway/replay"
+    assert {p.name: p.read_bytes() for p in published.iterdir()} == {**results, "attempt.json": files["attempt.json"]}
 
 
 @pytest.mark.parametrize("status", ["completed", "failed"])

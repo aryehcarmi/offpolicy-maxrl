@@ -79,6 +79,19 @@ The worker writes experiment output to local disk for hard-link support, copies 
 
 To retrieve a finished attempt after a disconnect, find its ID with `modal volume ls countdown-maxrl /`, then use `modal run scripts/modal_countdown.py --recover-attempt <attempt-id>`. This retrieves the small files without launching another worker. For a later midpoint run, use `--stage midpoint --pilot-attempt <completed-pilot-attempt-id>`. The worker checks that its GPU type matches the pilot's before collecting any responses.
 
+### Replay the pilot's first update
+
+The [pilot at SGD rate 0.001](results/midway/pilot-lr-0.001/report.md) lost all validation successes. To measure the effect of the first update, replay its two saved training batches on the A10.
+
+```bash
+modal run --detach scripts/modal_countdown.py --stage replay \
+  --pilot-attempt pilot-20261118T190958601132Z-b80c6ef23f1c
+```
+
+Each trial starts at the pinned initial weights and applies the trainer's first-batch SGD gradient once. The table compares the increase in the trainer's objective, with the original success weights held fixed, to the learning rate times the squared gradient norm. The second batch supplies held-out full-response log probability ratios against the actual frozen sampler. The fraction inside ±0.1 counts each response once. The projection of the float32 parameter change onto the intended step measures how much of that step survived rounding.
+
+The replay tests rates 1e-6, 3e-6, 1e-5, 3e-5, 1e-4 and 1e-3. At 1e-6, the realized increase must be within 20% of the prediction. Subject to that check, select the largest rate with at least half the predicted increase and at least 95% of held-out log ratios inside ±0.1. If either check leaves no rate, stop. The six-row table, individual held-out observations, decision and timing are saved under `results/midway/replay/`.
+
 ## Experiment conventions
 
 For a prompt with binary rewards $r_i$, let $K=\sum_i r_i$, $W_i=\pi_\theta(y_i\mid x)/\nu(y_i\mid x)$ and $S_i=\nabla_\theta\log\pi_\theta(y_i\mid x)$. The two primary estimators are

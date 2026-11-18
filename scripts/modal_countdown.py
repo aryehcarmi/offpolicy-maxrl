@@ -1,4 +1,4 @@
-"""Run the controlled Countdown evaluation, pilot or midpoint protocol on Modal."""
+"""Run the controlled Countdown evaluation, pilot, replay or midpoint protocol on Modal."""
 from collections import defaultdict
 from contextlib import contextmanager
 import csv
@@ -20,10 +20,13 @@ from uuid import uuid4
 
 
 MANIFEST_SHA256 = "abdb27fbeeefdae2c9f6cce441811af401e07937f9b6bd4693f8a5cabb556186"
-STAGES = ("preflight", "initial-eval", "pilot", "midpoint")
+PILOT_DEPENDENT = ("replay", "midpoint")
+STAGES = ("preflight", "initial-eval", "pilot", *PILOT_DEPENDENT)
 TEST_SDK = "/opt/countdown-test-sdk"
 PILOT_INPUTS = ("run.json", "metrics.jsonl", "resources.csv")
 BUDGET_CONFIGS = ("pilot.json", "screen.json", "tune.json", "main.json")
+REPLAY_INPUTS = ("run.json", "metrics.jsonl", "responses/train-000001.jsonl", "responses/train-000002.jsonl")
+REPLAY_OUTPUTS = ("rates.csv", "heldout.jsonl", "replay.json", "resources.csv")
 
 
 def _digest(path):
@@ -110,8 +113,11 @@ def job_commands(stage, repo, manifest, output, hourly_usd, pilot_run=None):
         module = "maxrl.evaluate" if stage == "initial-eval" else "maxrl.train"
         return [[python, "-m", module, "--config", "configs/pilot.json", "--manifest", str(manifest),
                  "--out", str(output), *device, "--generation-batch", "8", "--score-batch", "1", *price]]
-    if stage != "midpoint" or pilot_run is None:
-        raise ValueError(f"Expected a GPU stage and a pilot input for midpoint, got {stage!r}")
+    if stage not in PILOT_DEPENDENT or pilot_run is None:
+        raise ValueError(f"Expected a GPU stage with its required pilot input, got {stage!r}")
+    if stage == "replay":
+        return [[python, "-m", "maxrl.replay", "--pilot", str(pilot_run), "--out", str(output),
+                 "--device", "cuda", *price]]
     diag = [python, "-m", "maxrl.diagnostics"]
     pools = ["--pools", str(output)]
     return [
@@ -202,17 +208,27 @@ def _preflight(repo, volume_root, scratch, emit, commit):
     return digest
 
 
-def _pilot_input(volume_root, pilot_attempt, assigned_gpu):
+def _pilot_input(volume_root, pilot_attempt, assigned_gpu, stage="midpoint"):
     if not pilot_attempt or Path(pilot_attempt).name != pilot_attempt or pilot_attempt in (".", ".."):
-        raise ValueError("A midpoint job requires a pilot attempt directory name")
+        raise ValueError(f"A {stage} job requires a pilot attempt directory name")
     folder = volume_root / pilot_attempt
     record = json.loads((folder / "attempt.json").read_text())
     if record["stage"] != "pilot" or record["status"] != "completed":
         raise ValueError(f"Pilot attempt {pilot_attempt} did not complete")
     pilot_cards = {gpu_type(record[key]) for key in ("gpu_type", "gpu_name") if record.get(key)}
     if pilot_cards != {assigned_gpu}:
-        raise ValueError(f"Midpoint GPU {assigned_gpu} must match pilot {pilot_attempt} "
+        raise ValueError(f"{stage} GPU {assigned_gpu} must match pilot {pilot_attempt} "
                          f"(recorded GPU types: {sorted(pilot_cards)})")
+    if stage == "replay":
+        if record["attempt_id"] != pilot_attempt or record["manifest_sha256"] != MANIFEST_SHA256:
+            raise ValueError("Replay source pilot attempt or data manifest identity mismatch")
+        for name in REPLAY_INPUTS:
+            key = f"output/{name}"
+            if record["sha256"].get(key) != _digest(folder / key):
+                raise ValueError(f"Replay source SHA-256 mismatch: {key}")
+        run = json.loads((folder / "output/run.json").read_text())
+        if run["manifest_sha256"] != record["manifest_sha256"]:
+            raise ValueError("Replay source run and attempt disagree on data manifest")
     return folder / "output"
 
 
@@ -242,7 +258,7 @@ def git_provenance(repo):
 def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str, provenance: dict,
                 rates: dict | None = None, pilot_attempt: str | None = None) -> dict:
     """Keep writable experiment files on local disk and preserve one Volume folder per invocation."""
-    if stage not in STAGES or (stage != "midpoint" and pilot_attempt is not None):
+    if stage not in STAGES or (stage not in PILOT_DEPENDENT and pilot_attempt is not None):
         raise ValueError(f"Invalid stage or pilot input for {stage!r}")
     repo, volume_root = Path(repo).resolve(), Path(volume_root).resolve()
     started = _utc()
@@ -281,7 +297,8 @@ def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str, provenance
                      f"at ${hourly_usd:.6f}/hour")
                 _record(record_path, record)
                 commit()
-                pilot = _pilot_input(volume_root, pilot_attempt, record["gpu_type"]) if stage == "midpoint" else None
+                pilot = (_pilot_input(volume_root, pilot_attempt, record["gpu_type"], stage)
+                         if stage in PILOT_DEPENDENT else None)
                 manifest = volume_root / "data/manifest.json"
                 record["manifest_sha256"] = verify_manifest(manifest)
                 commands = job_commands(stage, repo, manifest, output, hourly_usd, pilot)
@@ -299,6 +316,10 @@ def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str, provenance
                           output, manifest, str(hourly_usd)], repo, emit)
                 if not output.is_dir():
                     raise FileNotFoundError(f"Job exited without creating {output}")
+                if stage == "replay":
+                    for name in REPLAY_OUTPUTS:
+                        if not (output / name).stat().st_size:
+                            raise ValueError(f"Empty replay result: {name}")
                 if stage == "pilot":
                     (output / "configs").mkdir()
                     for name in BUDGET_CONFIGS:
@@ -444,6 +465,8 @@ def _small_artifact(stage, path):
     if stage == "pilot":
         return (str(relative) in (*PILOT_INPUTS, "failure.json") or
                 (relative.parent == Path("configs") and relative.name in BUDGET_CONFIGS))
+    if stage == "replay":
+        return str(relative) in REPLAY_OUTPUTS
     return stage == "midpoint" and relative.name in ("manifest.json", "summary.json", "provenance.json", "resources.csv")
 
 
@@ -493,7 +516,7 @@ def download_attempt(record, repo, volume):
                 raise ValueError(f"SHA-256 mismatch: {filename}")
         _publish_folder(staged, folder, keep_extra=True)
     stage = record["stage"]
-    if stage in ("initial-eval", "pilot") and record["status"] == "completed":
+    if stage in ("initial-eval", "pilot", "replay") and record["status"] == "completed":
         midway = repo / "results/midway"
         midway.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=midway) as tmp:
@@ -501,6 +524,10 @@ def download_attempt(record, repo, volume):
             summary.mkdir()
             if stage == "pilot":
                 _pilot_summary(repo, folder, summary)
+            elif stage == "replay":
+                shutil.copyfile(folder / "attempt.json", summary / "attempt.json")
+                for filename in REPLAY_OUTPUTS:
+                    shutil.copyfile(folder / "output" / filename, summary / filename)
             else:
                 for filename in ("metrics.json", "resources.csv"):
                     shutil.copyfile(folder / "output" / filename, summary / filename)
@@ -537,8 +564,8 @@ if modal is not None:
     @app.local_entrypoint()
     def main(stage: str = "preflight", pilot_attempt: str = "", recover_attempt: str = ""):
         """Run one stage or retrieve the small artifacts of an existing attempt."""
-        if stage not in STAGES or (stage == "midpoint") != bool(pilot_attempt):
-            raise ValueError(f"Choose a stage from {STAGES}. Only midpoint requires --pilot-attempt.")
+        if stage not in STAGES or (stage in PILOT_DEPENDENT) != bool(pilot_attempt):
+            raise ValueError(f"Choose a stage from {STAGES}. Replay and midpoint require --pilot-attempt.")
         repo = Path(__file__).resolve().parents[1]
 
         def receive(record):

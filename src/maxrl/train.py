@@ -40,20 +40,20 @@ def summarize_weights(log_weights):
     }
 
 
-def update_policy(model, optimizer, groups, method, score_batch):
-    """Accumulate success scores and apply one plain SGD step to the entire batch."""
+def sampler_logprob(row):
+    return math.fsum(lp for lp, keep in zip(row.sampler_logprobs, row.response_mask) if keep)
+
+
+def accumulate_gradient(model, groups, method, score_batch):
+    """Accumulate the training loss gradient and return pre-update diagnostics."""
     if not groups or any(not group for group in groups):
         raise ValueError("Training requires nonempty response groups")
     model.eval()  # Score the same dropout-free policy used for generation.
-    optimizer.zero_grad(set_to_none=True)
     all_log_w, success_log_w = [], []
     for group in groups:
         with torch.no_grad():
             current = torch.cat([sequence_logprobs(model, part) for part in chunks(group, score_batch)])
-        behavior = [
-            math.fsum(lp for lp, keep in zip(row.sampler_logprobs, row.response_mask) if keep)
-            for row in group
-        ]
+        behavior = [sampler_logprob(row) for row in group]
         log_w = current.cpu().numpy() - behavior
         if not np.isfinite(log_w).all():
             raise FloatingPointError("Nonfinite full-response log ratio")
@@ -80,8 +80,17 @@ def update_policy(model, optimizer, groups, method, score_batch):
     norm = torch.nn.utils.get_total_norm(gradients).item() if gradients else 0.0
     if not math.isfinite(norm):
         raise FloatingPointError("Nonfinite SGD gradient norm")
+    summary = {"gradient_norm": norm, "all_weights": summarize_weights(all_log_w),
+               "successful_weights": summarize_weights(success_log_w)}
+    return summary, all_log_w
+
+
+def update_policy(model, optimizer, groups, method, score_batch):
+    """Accumulate success scores and apply one plain SGD step to the entire batch."""
+    optimizer.zero_grad(set_to_none=True)
+    summary, all_log_w = accumulate_gradient(model, groups, method, score_batch)
     optimizer.step()
-    if gradients:
+    if summary["successful_weights"] is not None:
         # A finite gradient can still yield an overflowing SGD update. The
         # infinity norm scans FP32 parameters without allocating a model copy.
         with torch.no_grad():
@@ -89,8 +98,6 @@ def update_policy(model, optimizer, groups, method, score_batch):
             if not torch.isfinite(largest):
                 raise FloatingPointError("Nonfinite parameters after SGD")
     optimizer.zero_grad(set_to_none=True)
-    summary = {"gradient_norm": norm, "all_weights": summarize_weights(all_log_w),
-               "successful_weights": summarize_weights(success_log_w)}
     return summary, all_log_w
 
 
