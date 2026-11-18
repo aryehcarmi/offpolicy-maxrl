@@ -4,7 +4,7 @@ Experiments on success normalization for off-policy MaxRL, using exact toy model
 
 **Count** divides the importance-weighted score sum by the number of successful responses. **SNIS** divides the same sum by the total importance weight of those successes. For one nonempty group, the two updates have the same direction. Their different scales can change the direction of a batch update across puzzles. The primary training comparison is final test pass@1, SNIS minus Count, over five matched seeds.
 
-The repository contains the toy results and CPU tests, including integration tests with a tiny randomly initialized Qwen3. Experiments with the pretrained model remain to be run.
+The repository contains the toy results and CPU tests, including integration tests with a tiny randomly initialized Qwen3. The initial pretrained-model evaluation reached 8.01% pass@1 and 31.25% pass@8 on 128 validation puzzles. [Initial evaluation metrics](results/midway/initial-eval/metrics.json)
 
 ## Installation
 
@@ -64,6 +64,21 @@ The pilot uses seed 17, a frozen initial sampler, SGD at 0.001, and 32 puzzles w
 
 Set `--device`, `--dtype`, `--generation-batch` and `--score-batch` for the available hardware. Use the same precision and batch settings across matched methods. Add `--hourly-usd` to record the machine's actual hourly price. The [diagnostic guide](docs/diagnostics.md) gives the next commands for the 2,048-response midpoint panel and full-model gradient check.
 
+### Run on Modal
+
+From the repository root, confirm the active profile is `acarmi`, then run the initial validation evaluation.
+
+```bash
+modal profile current
+modal run --detach scripts/modal_countdown.py --stage initial-eval
+```
+
+The launcher prepares seed-623 data once on Volume `countdown-maxrl`. Before each GPU job, a CPU worker verifies the manifest and every shard and runs the test suite in the same frozen image. Use `--stage preflight` for the CPU checks alone. The evaluation requests one GPU, with L4 preferred and A10 as the capacity fallback, plus two CPU cores and 16 GiB of memory. The worker checks CUDA before generation and passes the assigned machine’s total hourly rate from `modal billing rates --json` to `--hourly-usd`.
+
+Each GPU attempt writes experiment output to local disk for hard-link support, then copies the available output to its own Volume folder and commits it on success or failure. The launcher downloads the attempt to `runs/countdown/<attempt-id>/`. A successful initial evaluation also copies `metrics.json` and `resources.csv` to `results/midway/initial-eval/`. For manual recovery, set `ATTEMPT` to the folder name from `modal volume ls countdown-maxrl /`, create the destination with `mkdir -p runs/countdown` and run `modal volume get countdown-maxrl "$ATTEMPT" runs/countdown/`.
+
+After reviewing initial accuracy, select the 16-update training job with `--stage pilot`. For the midpoint diagnostics, use `--stage midpoint --pilot-attempt <completed-pilot-attempt-id>` with the pilot folder name from the same Volume.
+
 ## Experiment conventions
 
 For a prompt with binary rewards $r_i$, let $K=\sum_i r_i$, $W_i=\pi_\theta(y_i\mid x)/\nu(y_i\mid x)$ and $S_i=\nabla_\theta\log\pi_\theta(y_i\mid x)$. The two primary estimators are
@@ -98,4 +113,4 @@ Groups with no successes contribute zero and remain in the batch average. Ratios
 | `configs/`, `tests/` | Experiment settings and CPU tests |
 | `scripts/li_replication.py`, `scripts/modal_li_initial.py` | Adapter to the pinned upstream implementation and Modal launcher for initial evaluation |
 
-The controlled backend uses one device. Run outputs and gradient scratch should use a local disk with hard-link support; copy completed artifacts to shared storage afterward. Profile the pilot before scheduling long runs: the trainer has no resume support. See the [resource notes](docs/matrix.md#storage-and-scheduling) for checkpoint and scratch space. Pretrained-model GPU accuracy, throughput and cost remain to be measured.
+The controlled backend uses one device. Run outputs and gradient scratch should use a local disk with hard-link support; copy completed artifacts to shared storage afterward. Profile the pilot before scheduling long runs: the trainer has no resume support. See the [resource notes](docs/matrix.md#storage-and-scheduling) for checkpoint and scratch space. The [initial validation timing](results/midway/initial-eval/resources.csv) gives the measured evaluation cost and throughput on an A10. Pilot training has yet to be profiled.
