@@ -11,6 +11,7 @@ import pytest
 
 
 REPO = Path(__file__).resolve().parents[1]
+PROVENANCE = {"git_commit": "1234abcd" * 5, "git_dirty": False}
 
 
 def import_launcher(with_modal=False):
@@ -30,17 +31,26 @@ def launcher():
 
 @pytest.fixture
 def rates():
-    # Distinct invented GPU prices expose an accidental charge for the preferred GPU.
+    # The previous L4 rate is deliberately distinct from the A10 rate.
     return {"gpu_hour_cost_l4": "3.75", "gpu_hour_cost_a10g": "4.50",
             "cpu_hour_cost": "0.11", "mem_gib_hour_cost": "0.02"}
 
 
-@pytest.mark.parametrize("device,gpu,price", [("NVIDIA L4", "L4", 3.75), ("NVIDIA A10", "A10", 4.5),
-                                             ("NVIDIA A10G", "A10", 4.5)])
-def test_price_includes_assigned_gpu_requested_cpu_and_memory(launcher, rates, device, gpu, price):
-    assert launcher.gpu_type(device) == gpu
-    expected = price + launcher.CPU * 0.11 + launcher.MEMORY_MIB / 1024 * 0.02
-    assert launcher.hourly_rate(rates, gpu) == pytest.approx(expected)
+@pytest.mark.parametrize("device", ["NVIDIA A10", "NVIDIA A10G"])
+def test_price_includes_assigned_gpu_requested_cpu_and_memory(launcher, rates, device):
+    assert launcher.gpu_type(device) == launcher.GPU == "A10"
+    expected = 4.5 + launcher.CPU * 0.11 + launcher.MEMORY_MIB / 1024 * 0.02
+    assert launcher.hourly_rate(rates) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("changes", ["", "? untracked.txt\n", "1 M. staged change\n", "1 .M unstaged change\n"])
+def test_git_provenance_includes_all_local_changes(launcher, monkeypatch, changes):
+    def git(cmd, text):
+        assert cmd == ["git", "-C", str(REPO), "status", "--porcelain=v2", "--branch", "--untracked-files=normal"]
+        return f"# branch.oid {PROVENANCE['git_commit']}\n# branch.head main\n# branch.ab +1 -0\n{changes}"
+
+    monkeypatch.setattr(launcher.subprocess, "check_output", git)
+    assert launcher.git_provenance(REPO) == {**PROVENANCE, "git_dirty": bool(changes)}
 
 
 @pytest.mark.parametrize("stage,module", [("initial-eval", "maxrl.evaluate"), ("pilot", "maxrl.train")])
@@ -74,6 +84,28 @@ def test_midpoint_uses_completed_pilot_and_documented_order(launcher, tmp_path):
         assert (options["--device"], options["--dtype"], options["--hourly-usd"]) == ("cuda", "float32", "2.5")
     assert score["--pools"] == analyze["--pools"] == full["--pools"] == str(out)
     assert analyze["--group-size"] == full["--group-size"] == "8"
+
+
+@pytest.mark.parametrize("cards", [{"gpu_type": "L4", "gpu_name": "NVIDIA L4"}, {},
+                                   {"gpu_type": "A10", "gpu_name": "NVIDIA L4"}])
+def test_midpoint_refuses_unmatched_pilot_before_loading_models(launcher, rates, tmp_path, monkeypatch, cards):
+    pilot = tmp_path / "saved-pilot"
+    pilot.mkdir()
+    (pilot / "attempt.json").write_text(json.dumps({"status": "completed", "stage": "pilot", **cards}))
+    monkeypatch.setattr(launcher, "_gpu_name", lambda: "NVIDIA A10")
+    monkeypatch.setattr(launcher, "_run", lambda *a, **k: pytest.fail("unexpected subprocess"))
+    record = launcher.run_attempt(REPO, tmp_path, lambda: None, stage="midpoint",
+                                  rates=rates, pilot_attempt=pilot.name, provenance=PROVENANCE)
+    assert record["status"] == "failed" and "must match pilot" in record["error"]
+    assert not (tmp_path / record["attempt_id"] / "output").exists()
+
+
+def test_midpoint_recognizes_pilot_gpu_name_alias(launcher, tmp_path):
+    pilot = tmp_path / "saved-pilot"
+    pilot.mkdir()
+    (pilot / "attempt.json").write_text(json.dumps({"stage": "pilot", "status": "completed",
+                                                   "gpu_name": "NVIDIA A10G", "gpu_type": "A10"}))
+    assert launcher._pilot_input(tmp_path, pilot.name, "A10") == pilot / "output"
 
 
 def write_data_fixture(folder):
@@ -116,13 +148,17 @@ def test_preflight_prepares_once_and_rechecks_cache(launcher, tmp_path, monkeypa
             write_data_fixture(Path(cmd[cmd.index("--out") + 1]))
 
     monkeypatch.setattr(launcher, "_run", run)
-    results = [launcher.run_attempt(REPO, root, lambda: None, stage="preflight") for _ in range(2)]
+    results = [launcher.run_attempt(REPO, root, lambda: None, stage="preflight", provenance=PROVENANCE)
+               for _ in range(2)]
     assert [result["status"] for result in results] == ["completed", "completed"]
+    for result in results:
+        persisted = json.loads((root / result["attempt_id"] / "attempt.json").read_text())
+        assert persisted["git_commit"] == PROVENANCE["git_commit"] and persisted["git_dirty"] is False
     assert sum("maxrl.data" in cmd for cmd in commands) == 1
     assert sum(any("pytest.main" in arg for arg in cmd) for cmd in commands) == 2
     assert not any("maxrl.evaluate" in cmd or "maxrl.train" in cmd for cmd in commands)
     (root / "data/validation.jsonl").write_bytes(b"bad shard")
-    assert launcher.run_attempt(REPO, root, lambda: None, stage="preflight")["status"] == "failed"
+    assert launcher.run_attempt(REPO, root, lambda: None, stage="preflight", provenance=PROVENANCE)["status"] == "failed"
 
 
 def test_failed_gpu_attempts_persist_before_retry(launcher, rates, tmp_path, monkeypatch):
@@ -135,7 +171,7 @@ def test_failed_gpu_attempts_persist_before_retry(launcher, rates, tmp_path, mon
                           for p in root.rglob("attempt.json")})
 
     commands = []
-    devices = iter(["NVIDIA L4", "NVIDIA A10G"])
+    devices = iter(["NVIDIA A10", "NVIDIA A10G"])
     monkeypatch.setattr(launcher, "_gpu_name", lambda: next(devices))
 
     def run(argv, repo, emit, **kwargs):
@@ -144,7 +180,7 @@ def test_failed_gpu_attempts_persist_before_retry(launcher, rates, tmp_path, mon
         if len(commands) == 1:
             raise RuntimeError("CUDA unavailable")
         if "maxrl.evaluate" in cmd:
-            assert float(cmd[cmd.index("--hourly-usd") + 1]) == launcher.hourly_rate(rates, "A10")
+            assert float(cmd[cmd.index("--hourly-usd") + 1]) == launcher.hourly_rate(rates)
             output = Path(cmd[cmd.index("--out") + 1])
             assert not output.is_relative_to(root)
             output.mkdir()  # evaluator requires a previously nonexistent directory
@@ -152,25 +188,27 @@ def test_failed_gpu_attempts_persist_before_retry(launcher, rates, tmp_path, mon
             raise RuntimeError("model failed")
 
     monkeypatch.setattr(launcher, "_run", run)
-    first = launcher.run_attempt(REPO, root, commit, stage="initial-eval", rates=rates)
+    dirty = {**PROVENANCE, "git_dirty": True}
+    first = launcher.run_attempt(REPO, root, commit, stage="initial-eval", rates=rates, provenance=dirty)
     assert "CUDA unavailable" in first["error"]
     assert not any("maxrl.evaluate" in cmd for cmd in commands)
-    second = launcher.run_attempt(REPO, root, commit, stage="initial-eval", rates=rates)
+    second = launcher.run_attempt(REPO, root, commit, stage="initial-eval", rates=rates, provenance=dirty)
     assert "model failed" in second["error"]
     assert first["attempt_id"] != second["attempt_id"]
-    for record, device, gpu in ((first, "NVIDIA L4", "L4"), (second, "NVIDIA A10G", "A10")):
+    for record, device in ((first, "NVIDIA A10"), (second, "NVIDIA A10G")):
         folder = root / record["attempt_id"]
         assert (folder / "run.log").is_file()
         assert json.loads((folder / "attempt.json").read_text()) == record
         assert snapshots[-1][folder.name] == record["status"] == "failed"
-        assert (record["gpu_name"], record["gpu_type"]) == (device, gpu)
-        hourly_usd = launcher.hourly_rate(rates, gpu)
+        assert (record["gpu_name"], record["gpu_type"]) == (device, "A10")
+        assert record["git_commit"] == dirty["git_commit"] and record["git_dirty"] is True
+        hourly_usd = launcher.hourly_rate(rates)
         assert record["hourly_usd"] == pytest.approx(hourly_usd)
         assert record["estimated_cost_usd"] == pytest.approx(record["wall_seconds"] * hourly_usd / 3600)
     assert (root / second["attempt_id"] / "output/run.json").read_text() == "partial output"
 
 
-@pytest.mark.parametrize("device,omit_price", [("NVIDIA H100", False), ("NVIDIA A10G", True)])
+@pytest.mark.parametrize("device,omit_price", [("NVIDIA L4", False), ("NVIDIA H100", False), ("NVIDIA A10G", True)])
 def test_unknown_device_or_price_is_saved_before_generation(launcher, rates, tmp_path, monkeypatch, device, omit_price):
     root = tmp_path / "volume"
     monkeypatch.setattr(launcher, "MANIFEST_SHA256", write_data_fixture(root / "data"))
@@ -180,7 +218,8 @@ def test_unknown_device_or_price_is_saved_before_generation(launcher, rates, tmp
     commands = []
     monkeypatch.setattr(launcher, "_run", lambda argv, *args, **kwargs: commands.append(argv))
     commits = []
-    record = launcher.run_attempt(REPO, root, lambda: commits.append(True), stage="initial-eval", rates=rates)
+    record = launcher.run_attempt(REPO, root, lambda: commits.append(True), stage="initial-eval",
+                                  rates=rates, provenance=PROVENANCE)
     assert record["status"] == "failed" and record["error"]
     assert record["hourly_usd"] is None
     assert "estimated_cost_usd" not in record
@@ -198,7 +237,7 @@ class MemoryVolume:
 
 
 @pytest.mark.parametrize("status", ["completed", "failed"])
-def test_download_full_attempt_and_publish_only_summary(launcher, tmp_path, status):
+def test_download_small_attempt_files_and_publish_only_summary(launcher, tmp_path, status):
     attempt = "initial-eval-20261118T150000Z-31d4989b"
     files = {"run.log": b"evaluation log", "output/metrics.json": b'{"responses": 1024}\n',
              "output/resources.csv": b"phase,seconds\ntotal,3\n",
@@ -207,9 +246,15 @@ def test_download_full_attempt_and_publish_only_summary(launcher, tmp_path, stat
               "sha256": {name: hashlib.sha256(data).hexdigest() for name, data in files.items()}}
     files["attempt.json"] = (json.dumps(record) + "\n").encode()
     volume = MemoryVolume({f"{attempt}/{name}": data for name, data in files.items()})
+    # Leave a previous complete download intact when recovering with the selective downloader.
+    volume.content.pop(f"{attempt}/output/responses.jsonl")
+    full = launcher.download_attempt(record, tmp_path, volume)
+    small = {name: data for name, data in files.items() if name != "output/responses.jsonl"}
+    assert {str(p.relative_to(full)): p.read_bytes() for p in full.rglob("*") if p.is_file()} == small
+    legacy = full / "output/responses.jsonl"
+    legacy.write_bytes(files["output/responses.jsonl"])
     launcher.download_attempt(record, tmp_path, volume)
-    full = tmp_path / "runs/countdown" / attempt
-    assert {str(p.relative_to(full)): p.read_bytes() for p in full.rglob("*") if p.is_file()} == files
+    assert legacy.read_bytes() == files["output/responses.jsonl"]
     summary = tmp_path / "results/midway/initial-eval"
     if status == "completed":
         assert {p.name: p.read_bytes() for p in summary.iterdir()} == {
@@ -221,8 +266,8 @@ def test_download_full_attempt_and_publish_only_summary(launcher, tmp_path, stat
 
 def test_bad_download_never_publishes_partial_files(launcher, tmp_path):
     record = {"attempt_id": "a", "stage": "initial-eval", "status": "completed",
-              "sha256": {"output/responses.jsonl": hashlib.sha256(b"on volume").hexdigest()}}
-    volume = MemoryVolume({"a/attempt.json": json.dumps(record).encode(), "a/output/responses.jsonl": b"truncated"})
+              "sha256": {"output/metrics.json": hashlib.sha256(b"on volume").hexdigest()}}
+    volume = MemoryVolume({"a/attempt.json": json.dumps(record).encode(), "a/output/metrics.json": b"truncated"})
     with pytest.raises(ValueError, match="SHA-256"):
         launcher.download_attempt(record, tmp_path, volume)
     assert not list((tmp_path / "runs/countdown").iterdir())
@@ -268,10 +313,16 @@ def test_entrypoint_gates_single_gpu_job_on_preflight(cpu_ok, rates, monkeypatch
     monkeypatch.setattr(modal.App, "function", function)
     app = import_launcher(with_modal=True)
     assert set(app.app.registered_entrypoints) == {"main"}
-    assert requested_gpus == [["L4", "A10"]]
+    assert requested_gpus == ["A10"]
     events = []
 
-    def preflight():
+    def provenance(repo):
+        assert repo == REPO
+        events.append("git")
+        return PROVENANCE
+
+    def preflight(source):
+        assert source == PROVENANCE
         events.append("cpu")
         return {"stage": "preflight", "status": "completed" if cpu_ok else "failed", "error": "failed CPU checks"}
 
@@ -284,19 +335,21 @@ def test_entrypoint_gates_single_gpu_job_on_preflight(cpu_ok, rates, monkeypatch
         events.append("billing")
         return json.dumps(rates)
 
-    def gpu(stage, price_list, pilot):
+    def gpu(stage, price_list, pilot, source):
         assert (stage, price_list, pilot) == ("initial-eval", rates, None)
+        assert source == PROVENANCE
         events.append("gpu")
         return {"stage": stage, "status": "completed"}
 
     monkeypatch.setattr(app.preflight, "remote", preflight)
     monkeypatch.setattr(app.run_gpu, "remote", gpu)
     monkeypatch.setattr(app.subprocess, "check_output", billing)
+    monkeypatch.setattr(app, "git_provenance", provenance)
     monkeypatch.setattr(app, "download_attempt", download)
     if cpu_ok:
         app.main(stage="initial-eval")
-        assert events == ["cpu", "download preflight", "billing", "gpu", "download initial-eval"]
+        assert events == ["git", "cpu", "download preflight", "billing", "gpu", "download initial-eval"]
     else:
         with pytest.raises(RuntimeError, match="failed CPU checks"):
             app.main(stage="initial-eval")
-        assert events == ["cpu", "download preflight"]
+        assert events == ["git", "cpu", "download preflight"]

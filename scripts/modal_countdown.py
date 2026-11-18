@@ -1,5 +1,6 @@
 """Run the controlled Countdown evaluation, pilot or midpoint protocol on Modal."""
 from collections import defaultdict
+from contextlib import contextmanager
 import csv
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -13,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from uuid import uuid4
 
@@ -20,6 +22,8 @@ from uuid import uuid4
 MANIFEST_SHA256 = "abdb27fbeeefdae2c9f6cce441811af401e07937f9b6bd4693f8a5cabb556186"
 STAGES = ("preflight", "initial-eval", "pilot", "midpoint")
 TEST_SDK = "/opt/countdown-test-sdk"
+PILOT_INPUTS = ("run.json", "metrics.jsonl", "resources.csv")
+BUDGET_CONFIGS = ("pilot.json", "screen.json", "tune.json", "main.json")
 
 
 def _digest(path):
@@ -64,6 +68,35 @@ def verify_initial_output(output: Path, manifest: Path, hourly_usd: float) -> No
             or not math.isclose(float(total["machine_usd"]), seconds * hourly_usd / 3600)):
         raise ValueError("Total resource row differs from the response count or requested machine rate")
     print(f"Verified {len(groups)} validation puzzles, {actual['responses']} responses and resource total")
+
+
+def verify_pilot_checkpoints(output, saved, inventory, *, completed):
+    """Compare the worker's checkpoint bytes with the SHA-256 inventory read on the Volume."""
+    checkpoints = output / "checkpoints"
+    for path in checkpoints.rglob("*"):
+        if path.is_file():
+            key = str(Path("output") / path.relative_to(output))
+            if inventory.get(key) != _digest(path):
+                raise ValueError(f"Checkpoint SHA-256 mismatch: {key}")
+
+    if not completed:
+        return []
+    run = json.loads((saved / "run.json").read_text())
+    config = run["config"]
+    steps = sorted({*config["checkpoint_steps"], config["updates"]})
+    verified = []
+    for step in steps:
+        folder = saved / "checkpoints" / f"step-{step:06d}"
+        marker = json.loads((folder / "maxrl_checkpoint.json").read_text())
+        identity = f"{run['run_id']}/{folder.name}"
+        if marker["checkpoint_id"] != identity or marker["prompt"] != run["prompt"]:
+            raise ValueError(f"Unexpected checkpoint identity at {folder}")
+        # save_pretrained writes one weight file for the pinned 0.6B model.
+        for name in ("model.safetensors", "config.json", "tokenizer.json", "tokenizer_config.json"):
+            if (folder / name).stat().st_size == 0:
+                raise ValueError(f"Empty checkpoint file: {folder / name}")
+        verified.append(identity)
+    return verified
 
 
 def job_commands(stage, repo, manifest, output, hourly_usd, pilot_run=None):
@@ -112,6 +145,38 @@ def _run(argv, repo, emit, *, offline=False):
                 child.kill()
 
 
+@contextmanager
+def _sample_gpu(path, emit, interval=30):
+    """Sample the single assigned card while the experiment subprocess runs."""
+    stop = threading.Event()
+
+    def sample():
+        try:
+            with path.open("x", newline="", encoding="utf-8") as stream:
+                writer = csv.writer(stream)
+                writer.writerow(["timestamp_utc", "gpu_utilization_percent", "memory_used_mib", "memory_total_mib"])
+                while True:
+                    output = subprocess.check_output([
+                        "nvidia-smi", "--query-gpu=utilization.gpu,memory.used,memory.total",
+                        "--format=csv,noheader,nounits",
+                    ], text=True, timeout=5, stderr=subprocess.STDOUT)
+                    utilization, used, total = map(int, output.strip().split(","))
+                    writer.writerow([_utc(), utilization, used, total])
+                    stream.flush()
+                    if stop.wait(interval):
+                        break
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            emit(f"GPU sampling stopped: {error}")
+
+    worker = threading.Thread(target=sample, name="gpu-sampler", daemon=True)
+    worker.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        worker.join()
+
+
 def _preflight(repo, volume_root, scratch, emit, commit):
     python = repo / ".venv/bin/python"
     _run([python, "-c", "import torch; print(torch.__version__, torch.version.cuda); "
@@ -137,13 +202,17 @@ def _preflight(repo, volume_root, scratch, emit, commit):
     return digest
 
 
-def _pilot_input(volume_root, pilot_attempt):
+def _pilot_input(volume_root, pilot_attempt, assigned_gpu):
     if not pilot_attempt or Path(pilot_attempt).name != pilot_attempt or pilot_attempt in (".", ".."):
         raise ValueError("A midpoint job requires a pilot attempt directory name")
     folder = volume_root / pilot_attempt
     record = json.loads((folder / "attempt.json").read_text())
     if record["stage"] != "pilot" or record["status"] != "completed":
         raise ValueError(f"Pilot attempt {pilot_attempt} did not complete")
+    pilot_cards = {gpu_type(record[key]) for key in ("gpu_type", "gpu_name") if record.get(key)}
+    if pilot_cards != {assigned_gpu}:
+        raise ValueError(f"Midpoint GPU {assigned_gpu} must match pilot {pilot_attempt} "
+                         f"(recorded GPU types: {sorted(pilot_cards)})")
     return folder / "output"
 
 
@@ -157,7 +226,20 @@ def _record(path, record):
     staged.replace(path)
 
 
-def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str,
+def git_provenance(repo):
+    """Read the launch checkout once, including staged and untracked changes."""
+    status = subprocess.check_output(
+        ["git", "-C", str(repo), "status", "--porcelain=v2", "--branch", "--untracked-files=normal"],
+        text=True,
+    ).splitlines()
+    prefix = "# branch.oid "
+    commit = next((line[len(prefix):] for line in status if line.startswith(prefix)), None)
+    if not commit or commit == "(initial)":
+        raise ValueError(f"No Git commit in the launch checkout: {repo}")
+    return {"git_commit": commit, "git_dirty": any(not line.startswith("# ") for line in status)}
+
+
+def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str, provenance: dict,
                 rates: dict | None = None, pilot_attempt: str | None = None) -> dict:
     """Keep writable experiment files on local disk and preserve one Volume folder per invocation."""
     if stage not in STAGES or (stage != "midpoint" and pilot_attempt is not None):
@@ -169,6 +251,7 @@ def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str,
     attempt = volume_root / attempt_id
     attempt.mkdir(parents=True, exist_ok=False)
     record = {"attempt_id": attempt_id, "stage": stage, "pilot_attempt": pilot_attempt,
+              "git_commit": provenance["git_commit"], "git_dirty": provenance["git_dirty"],
               "status": "running", "started_utc": started, "gpu_name": None, "gpu_type": None,
               "hourly_usd": None, "sha256": {}}
     record_path = attempt / "attempt.json"
@@ -190,21 +273,24 @@ def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str,
             else:
                 record["gpu_name"] = _gpu_name()
                 record["gpu_type"] = gpu_type(record["gpu_name"])
-                hourly_usd = hourly_rate(rates, record["gpu_type"])
+                if record["gpu_type"] != GPU:
+                    raise ValueError(f"Requested {GPU}, received {record['gpu_name']}")
+                hourly_usd = hourly_rate(rates)
                 record["hourly_usd"] = hourly_usd
                 emit(f"Assigned {record['gpu_name']}, {CPU} CPU cores and {MEMORY_MIB} MiB "
                      f"at ${hourly_usd:.6f}/hour")
                 _record(record_path, record)
                 commit()
+                pilot = _pilot_input(volume_root, pilot_attempt, record["gpu_type"]) if stage == "midpoint" else None
                 manifest = volume_root / "data/manifest.json"
                 record["manifest_sha256"] = verify_manifest(manifest)
-                pilot = _pilot_input(volume_root, pilot_attempt) if stage == "midpoint" else None
                 commands = job_commands(stage, repo, manifest, output, hourly_usd, pilot)
                 _run([repo / ".venv/bin/python", "-c", "import torch; "
                       "assert torch.cuda.is_available() and torch.cuda.device_count() == 1, 'expected one CUDA GPU'; "
                       "print(torch.__version__, torch.version.cuda, torch.cuda.get_device_name(0))"], repo, emit)
-                for command in commands:
-                    _run(command, repo, emit)
+                with _sample_gpu(attempt / "gpu.csv", emit):
+                    for command in commands:
+                        _run(command, repo, emit)
                 if stage == "initial-eval":
                     _run([repo / ".venv/bin/python", "-c",
                           "from pathlib import Path; import sys; "
@@ -213,6 +299,10 @@ def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str,
                           output, manifest, str(hourly_usd)], repo, emit)
                 if not output.is_dir():
                     raise FileNotFoundError(f"Job exited without creating {output}")
+                if stage == "pilot":
+                    (output / "configs").mkdir()
+                    for name in BUDGET_CONFIGS:
+                        shutil.copyfile(repo / "configs" / name, output / "configs" / name)
             record["status"] = "completed"
         except BaseException as error:
             record.update(status="failed", error=f"{type(error).__name__}: {error}")
@@ -223,6 +313,8 @@ def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str,
             try:
                 if output.exists():
                     shutil.copytree(output, attempt / "output")
+                    if stage == "pilot":
+                        commit()  # Verify the copied files on the Volume before releasing local scratch.
             except BaseException as error:
                 previous = record.get("error", "")
                 record.update(status="failed", error=f"{previous} Artifact copy failed: {error}".strip())
@@ -232,11 +324,23 @@ def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str,
             finally:
                 try:
                     for path in sorted(attempt.rglob("*")):
-                        if path.is_file() and path != record_path:
+                        if path.is_file() and path not in (record_path, log):
                             record["sha256"][str(path.relative_to(attempt))] = _digest(path)
+                    if stage == "pilot":
+                        record["verified_checkpoints"] = verify_pilot_checkpoints(
+                            output, attempt / "output", record["sha256"], completed=record["status"] == "completed"
+                        )
+                except (OSError, ValueError, KeyError) as error:
+                    previous = record.get("error", "")
+                    record.update(status="failed", error=f"{previous} Artifact verification failed: {error}".strip())
+                    emit(record["error"])
+                # Verification failures are part of the durable worker log.
+                try:
+                    stream.flush()
+                    record["sha256"]["run.log"] = _digest(log)
                 except OSError as error:
                     previous = record.get("error", "")
-                    record.update(status="failed", error=f"{previous} Artifact read failed: {error}".strip())
+                    record.update(status="failed", error=f"{previous} Could not read run.log: {error}".strip())
                 record["finished_utc"] = _utc()
                 record["wall_seconds"] = time.monotonic() - start
                 if record["hourly_usd"] is not None:
@@ -249,7 +353,7 @@ def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str,
 REMOTE_REPO = Path("/opt/offpolicy-maxrl")
 VOLUME_ROOT = Path("/countdown")
 VOLUME_NAME = "countdown-maxrl"
-GPU_OPTIONS = ("L4", "A10")
+GPU = "A10"
 CPU = 2
 MEMORY_MIB = 16384
 
@@ -295,18 +399,13 @@ def _gpu_name():
 
 def gpu_type(name):
     model = name.strip().upper().removeprefix("NVIDIA ")
-    if model == "A10G":
-        model = "A10"
-    if model not in GPU_OPTIONS:
-        raise ValueError(f"Unexpected GPU {name!r}; requested {GPU_OPTIONS}")
-    return model
+    return "A10" if model == "A10G" else model
 
 
-def hourly_rate(rates, gpu):
+def hourly_rate(rates):
     """Use the current function rates for one GPU, CPU cores and GiB of memory."""
-    # Modal calls the fallback A10 when scheduling and A10G in its billing rate card.
-    gpu_rate_key = {"L4": "gpu_hour_cost_l4", "A10": "gpu_hour_cost_a10g"}[gpu_type(gpu)]
-    units = {gpu_rate_key: 1, "cpu_hour_cost": CPU,
+    # Modal calls the card A10 when scheduling and A10G in its billing rate card.
+    units = {"gpu_hour_cost_a10g": 1, "cpu_hour_cost": CPU,
              "mem_gib_hour_cost": Decimal(MEMORY_MIB) / 1024}
     total = Decimal(0)
     for key, quantity in units.items():
@@ -322,18 +421,49 @@ def hourly_rate(rates, gpu):
     return float(total)
 
 
-def _publish_folder(staged, target):
+def _publish_folder(staged, target, *, keep_extra=False):
     if not target.exists():
         staged.rename(target)
         return
     expected = {p.relative_to(staged) for p in staged.rglob("*") if p.is_file()}
     existing = {p.relative_to(target) for p in target.rglob("*") if p.is_file()}
-    if expected != existing or any(_digest(staged / p) != _digest(target / p) for p in expected):
+    if not expected <= existing or (not keep_extra and expected != existing):
+        raise FileExistsError(f"Existing local files differ: {target}")
+    if any(_digest(staged / p) != _digest(target / p) for p in expected):
         raise FileExistsError(f"Existing local files differ: {target}")
 
 
+def _small_artifact(stage, path):
+    if path in (Path("run.log"), Path("gpu.csv")):
+        return True
+    if len(path.parts) < 2 or path.parts[0] != "output":
+        return False
+    relative = path.relative_to("output")
+    if stage == "initial-eval":
+        return str(relative) in ("run.json", "metrics.json", "resources.csv")
+    if stage == "pilot":
+        return (str(relative) in (*PILOT_INPUTS, "failure.json") or
+                (relative.parent == Path("configs") and relative.name in BUDGET_CONFIGS))
+    return stage == "midpoint" and relative.name in ("manifest.json", "summary.json", "provenance.json", "resources.csv")
+
+
+def _pilot_summary(repo, attempt, summary):
+    """Run the two public report CLIs with exactly the inputs that will be published."""
+    for name in PILOT_INPUTS:
+        shutil.copyfile(attempt / "output" / name, summary / name)
+    shutil.copytree(attempt / "output/configs", summary / "configs")
+    shutil.copyfile(attempt / "attempt.json", summary / "attempt.json")
+    env = {**os.environ, "PYTHONPATH": str(repo / "src")}
+    for module, filename, options in (
+        ("maxrl.report", "report.md", []), ("maxrl.budget", "budget.json", ["--configs", str(summary / "configs")])
+    ):
+        with (summary / filename).open("xb") as out:
+            subprocess.run([sys.executable, "-m", module, "--pilot", str(summary), *options],
+                           cwd=repo, env=env, stdout=out, check=True)
+
+
 def download_attempt(record, repo, volume):
-    """Verify the complete Volume copy, then publish the two initial-evaluation summary files."""
+    """Retrieve and hash-check the small artifacts, leaving weights and raw shards on the Volume."""
     name = record["attempt_id"]
     if not name or Path(name).name != name or name in (".", ".."):
         raise ValueError(f"Invalid attempt ID: {name!r}")
@@ -350,6 +480,8 @@ def download_attempt(record, repo, volume):
             relative = Path(filename)
             if relative.is_absolute() or ".." in relative.parts:
                 raise ValueError(f"Invalid artifact path: {filename}")
+            if not _small_artifact(record["stage"], relative):
+                continue
             target = staged / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             digest = hashlib.sha256()
@@ -359,16 +491,20 @@ def download_attempt(record, repo, volume):
                     digest.update(chunk)
             if digest.hexdigest() != expected:
                 raise ValueError(f"SHA-256 mismatch: {filename}")
-        _publish_folder(staged, folder)
-    if record["stage"] == "initial-eval" and record["status"] == "completed":
+        _publish_folder(staged, folder, keep_extra=True)
+    stage = record["stage"]
+    if stage in ("initial-eval", "pilot") and record["status"] == "completed":
         midway = repo / "results/midway"
         midway.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=midway) as tmp:
-            summary = Path(tmp) / "initial-eval"
+            summary = Path(tmp) / stage
             summary.mkdir()
-            for filename in ("metrics.json", "resources.csv"):
-                shutil.copyfile(folder / "output" / filename, summary / filename)
-            _publish_folder(summary, midway / "initial-eval")
+            if stage == "pilot":
+                _pilot_summary(repo, folder, summary)
+            else:
+                for filename in ("metrics.json", "resources.csv"):
+                    shutil.copyfile(folder / "output" / filename, summary / filename)
+            _publish_folder(summary, midway / stage)
     return folder
 
 
@@ -388,19 +524,19 @@ if modal is not None:
                      max_containers=1)
 
     @app.function(**resources, timeout=1800)
-    def preflight():
+    def preflight(provenance):
         volume.reload()
-        return run_attempt(REMOTE_REPO, VOLUME_ROOT, volume.commit, stage="preflight")
+        return run_attempt(REMOTE_REPO, VOLUME_ROOT, volume.commit, stage="preflight", provenance=provenance)
 
-    @app.function(**resources, gpu=list(GPU_OPTIONS), timeout=24 * 3600)
-    def run_gpu(stage, rates, pilot_attempt):
+    @app.function(**resources, gpu=GPU, timeout=24 * 3600)
+    def run_gpu(stage, rates, pilot_attempt, provenance):
         volume.reload()
         return run_attempt(REMOTE_REPO, VOLUME_ROOT, volume.commit, stage=stage, rates=rates,
-                           pilot_attempt=pilot_attempt)
+                           pilot_attempt=pilot_attempt, provenance=provenance)
 
     @app.local_entrypoint()
-    def main(stage: str = "preflight", pilot_attempt: str = ""):
-        """Check the CPU environment, then execute only the named stage."""
+    def main(stage: str = "preflight", pilot_attempt: str = "", recover_attempt: str = ""):
+        """Run one stage or retrieve the small artifacts of an existing attempt."""
         if stage not in STAGES or (stage == "midpoint") != bool(pilot_attempt):
             raise ValueError(f"Choose a stage from {STAGES}. Only midpoint requires --pilot-attempt.")
         repo = Path(__file__).resolve().parents[1]
@@ -411,15 +547,26 @@ if modal is not None:
             if record["status"] != "completed":
                 raise RuntimeError(record.get("error", f"See {folder}"))
 
+        if recover_attempt:
+            if stage != "preflight" or pilot_attempt:
+                raise ValueError("Use --recover-attempt on its own")
+            if Path(recover_attempt).name != recover_attempt or recover_attempt in (".", ".."):
+                raise ValueError(f"Invalid attempt ID: {recover_attempt!r}")
+            record = json.loads(b"".join(volume.read_file(f"{recover_attempt}/attempt.json")))
+            if record["attempt_id"] != recover_attempt or record["status"] not in {"completed", "failed"}:
+                raise ValueError(f"Expected a finished record for {recover_attempt}")
+            receive(record)
+            return
+
         try:
-            receive(preflight.remote())
+            provenance = git_provenance(repo)
+            receive(preflight.remote(provenance))
             if stage != "preflight":
                 rates = json.loads(subprocess.check_output(["modal", "billing", "rates", "--json"], text=True))
-                options = ", ".join(f"{gpu} ${hourly_rate(rates, gpu):.6f}/hour" for gpu in GPU_OPTIONS)
-                print(f"Requesting one GPU in preference order ({options}), "
-                      f"{CPU} CPU cores and {MEMORY_MIB} MiB", flush=True)
-                receive(run_gpu.remote(stage, rates, pilot_attempt or None))
+                print(f"Requesting one {GPU}, {CPU} CPU cores and {MEMORY_MIB} MiB "
+                      f"at ${hourly_rate(rates):.6f}/hour", flush=True)
+                receive(run_gpu.remote(stage, rates, pilot_attempt or None, provenance))
         except Exception:
             print(f"Attempt recovery: modal volume ls {VOLUME_NAME} /\n"
-                  f"modal volume get {VOLUME_NAME} <attempt-id> runs/countdown/", file=sys.stderr)
+                  "modal run scripts/modal_countdown.py --recover-attempt <attempt-id>", file=sys.stderr)
             raise
