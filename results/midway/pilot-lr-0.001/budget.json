@@ -1,0 +1,66 @@
+{
+  "controlled": [
+    {
+      "phase": "pilot",
+      "runs": 1,
+      "updates": 16,
+      "training": 4096,
+      "validation": 2048,
+      "test": 0
+    },
+    {
+      "phase": "screen",
+      "runs": 3,
+      "updates": 48,
+      "training": 12288,
+      "validation": 6144,
+      "test": 0
+    },
+    {
+      "phase": "tune",
+      "runs": 12,
+      "updates": 1152,
+      "training": 294912,
+      "validation": 86016,
+      "test": 0
+    },
+    {
+      "phase": "main",
+      "runs": 16,
+      "updates": 2048,
+      "training": 524288,
+      "validation": 147456,
+      "test": 65536
+    }
+  ],
+  "diagnostic": {
+    "midpoint": 2048,
+    "discovery": 40960,
+    "confirmation": 40960
+  },
+  "replication": {
+    "initial_evaluation": 512,
+    "training": 122880,
+    "final_evaluations": 3072
+  },
+  "total_responses": 1353216,
+  "projection": {
+    "pilot_gpu": "NVIDIA A10",
+    "machine_hourly_usd": 1.3226,
+    "pilot_mean_training_tokens": 161.918212890625,
+    "pilot_mean_eval_tokens": 273.65234375,
+    "controlled_phase_hours": {
+      "training_generation": 271.85018827231,
+      "evaluation": 109.35913557154161,
+      "training_update": 16.776064663890118,
+      "setup_io_other": 0.12906105394665549
+    },
+    "controlled_usd": 526.546170990289,
+    "diagnostic_usd": null,
+    "replication_usd": null,
+    "projected_core_usd": null,
+    "ceiling_usd": 1500,
+    "reserved_usd": 300,
+    "headroom_before_reserve_usd": null
+  }
+}
