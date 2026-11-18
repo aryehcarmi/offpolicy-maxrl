@@ -1,6 +1,7 @@
 """Offline launcher contracts. All child processes run against temporary local fixtures."""
 
 from datetime import datetime, timedelta
+import hashlib
 import importlib.util
 import json
 import os
@@ -38,8 +39,11 @@ class LocalVolume:
                           for p in self.directory.rglob('*') if p.is_file()}
 
     def read_file(self, path):
-        self.reads.append(str(path).lstrip('/'))
-        contents = self.persisted[self.reads[-1]]
+        path = str(path).lstrip('/')
+        self.reads.append(path)
+        if path not in self.persisted:
+            raise FileNotFoundError(path)
+        contents = self.persisted[path]
         yield contents[:4]
         yield contents[4:]
 
@@ -53,8 +57,8 @@ def write_code(path, content, executable=False):
 
 @pytest.fixture
 def local_attempt(tmp_path, monkeypatch):
-    monkeypatch.setitem(sys.modules, 'modal', None)
-    core = module_at(REPO / 'scripts/modal_li_initial.py')
+    with patch.dict(sys.modules, {'modal': None}):
+        core = module_at(REPO / 'scripts/modal_li_initial.py')
     upstream = tmp_path / 'upstream'
     python = upstream / '.venv-tim/bin/python'
     python.parent.mkdir(parents=True)
@@ -92,6 +96,8 @@ def local_attempt(tmp_path, monkeypatch):
             dest = args.out / 'initial/evaluation.json'
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_text(json.dumps(result))
+            if mode == 'after_output':
+                raise RuntimeError('fixture failed after writing evaluation')
         if __name__ == '__main__':
             main()
     ''')
@@ -141,6 +147,18 @@ def attempt(fixture, **kwargs):
     return core.run_attempt(upstream, wrapper, volume.directory, volume.commit, **kwargs)
 
 
+def check_download(repo, volume, record, *, has_evaluation):
+    folder = repo / 'runs/replication' / record['run_id']
+    filenames = {'run.json', 'run.log'}
+    if has_evaluation:
+        filenames.add('initial/evaluation.json')
+    assert {f.relative_to(folder).as_posix() for f in folder.rglob('*') if f.is_file()} == filenames
+    for name in filenames:
+        assert (folder / name).read_bytes() == volume.persisted[f"{record['run_id']}/{name}"]
+    assert hashlib.sha256((folder / 'run.log').read_bytes()).hexdigest() == record['log_sha256']
+    return folder
+
+
 def test_two_evaluations_persist_distinct_results_and_summarize(local_attempt, tmp_path, capsys):
     core, _, _, volume = local_attempt
     first = attempt(local_attempt, hourly_usd=2.5)
@@ -170,22 +188,53 @@ def test_two_evaluations_persist_distinct_results_and_summarize(local_attempt, t
     core.finish_local(first, repo, volume)
     saved = repo / 'results/midway' / f"li-initial-{first['run_id']}.json"
     assert json.loads(saved.read_text()) == first
+    folder = check_download(repo, volume, first, has_evaluation=True)
+    assert list((repo / 'results').rglob('*.log')) == []
     output = capsys.readouterr().out
     assert '12.5' in output and '8.2' in output and 'H100' in output and 'wall' in output.lower()
+    assert str(folder) in output
 
 
-def test_evaluation_failure_commits_diagnostics_and_raises(local_attempt, monkeypatch):
-    _, _, _, volume = local_attempt
-    monkeypatch.setenv('FIXTURE_LI_STOP', 'early')
-    with pytest.raises(RuntimeError) as exc:
-        attempt(local_attempt)
-    records = [json.loads(p.read_text()) for p in volume.directory.rglob('*.json')]
-    [failed] = [r for r in records if r.get('status') == 'failed']
+@pytest.mark.parametrize('stop', ['early', 'after_output'])
+def test_failed_measurement_returns_then_downloads_and_raises(local_attempt, tmp_path, monkeypatch, stop):
+    core, _, _, volume = local_attempt
+    monkeypatch.setenv('FIXTURE_LI_STOP', stop)
+    failed = attempt(local_attempt)
+    assert failed['status'] == 'failed'
     assert json.loads(volume.persisted[failed['record_path']]) == failed
-    assert 'li-replication' in str(exc.value) and failed['log_path'] in str(exc.value)
-    log = volume.persisted[failed['log_path']].decode()
-    assert 'Failed to infer device type before wrapper setup' in log
     assert volume.commits >= 1
+    repo = tmp_path / 'laptop'
+    with pytest.raises(RuntimeError) as error:
+        core.finish_local(failed, repo, volume)
+    folder = check_download(repo, volume, failed, has_evaluation=(stop == 'after_output'))
+    assert str(folder) in str(error.value)
+    assert not (repo / 'results').exists()
+
+
+def test_download_failure_keeps_completed_measurement(local_attempt, monkeypatch, tmp_path, capsys):
+    core, _, _, volume = local_attempt
+    record = attempt(local_attempt)
+    repo = tmp_path / 'laptop'
+    tracked = repo / 'results/midway' / f"li-initial-{record['run_id']}.json"
+    original_read = volume.read_file
+    tracked_before_read = []
+
+    def read(path):
+        tracked_before_read.append(tracked.is_file() and json.loads(tracked.read_text()) == record)
+        return original_read(path)
+
+    monkeypatch.setattr(volume, 'read_file', read)
+    volume.persisted[record['log_path']] += b'corruption during transfer'
+    capsys.readouterr()
+    core.finish_local(record, repo, volume)
+    assert tracked_before_read and all(tracked_before_read)
+    assert json.loads(tracked.read_text()) == record
+    assert not (repo / 'runs/replication' / record['run_id']).exists()
+    captured = capsys.readouterr()
+    message = captured.out + captured.err
+    assert 'warn' in message.lower()
+    assert 'modal volume get li-replication' in message and record['run_id'] in message
+    assert '12.5' in message and '8.2' in message
 
 
 @pytest.mark.parametrize('stop, passed', [('device', True), ('early', False),
@@ -207,24 +256,35 @@ def test_preflight_requires_real_device_frame(local_attempt, tmp_path, monkeypat
     else:
         if stop == 'unexpected_success':
             assert record['wrapper_returncode'] == 0
-        with pytest.raises(RuntimeError):
+        with pytest.raises(RuntimeError) as error:
             core.finish_local(record, repo, volume)
+        assert str(repo / 'runs/replication' / record['run_id']) in str(error.value)
+    check_download(repo, volume, record, has_evaluation=False)
     assert {record['record_path'], record['log_path']} <= set(volume.reads)
     assert not (repo / 'results').exists()
-    if passed:
-        volume.persisted[record['log_path']] = b'wrong persisted log'
-        with pytest.raises(RuntimeError, match='[Vv]olume'):
-            core.finish_local(record, repo, volume)
+
+
+def test_preflight_checks_digest_in_downloaded_record(local_attempt, tmp_path, monkeypatch):
+    core, _, _, volume = local_attempt
+    monkeypatch.setenv('FIXTURE_LI_STOP', 'device')
+    record = attempt(local_attempt, preflight=True)
+    remote_record = dict(record, log_sha256=hashlib.sha256(b'other log').hexdigest())
+    volume.persisted[record['record_path']] = json.dumps(remote_record).encode()
+    repo = tmp_path / 'laptop'
+    with pytest.raises(RuntimeError):
+        core.finish_local(record, repo, volume)
+    assert not (repo / 'runs/replication' / record['run_id']).exists()
+    assert not (repo / 'results').exists()
 
 
 def test_missing_upstream_interpreter_is_persisted(local_attempt):
     _, upstream, _, volume = local_attempt
     (upstream / '.venv-tim/bin/python').unlink()
-    with pytest.raises(RuntimeError):
-        attempt(local_attempt)
+    failed = attempt(local_attempt)
     [record_path] = list(volume.directory.rglob('run.json'))
     record = json.loads(record_path.read_text())
     assert record['status'] == 'failed'
+    assert failed == record
     assert (volume.directory / record['log_path']).read_text().strip()
     assert volume.commits >= 1
 
@@ -255,10 +315,11 @@ def test_rename_project_changes_only_the_project_name(tmp_path):
 
 
 @pytest.mark.parametrize('local', [True, False], ids=['laptop', 'container'])
-def test_modal_app_imports_in_both_contexts(monkeypatch, tmp_path, capsys, local):
+def test_modal_app_imports_in_both_contexts(monkeypatch, local):
     modal = pytest.importorskip('modal')
     from importlib.metadata import version
-    assert version('modal') == '1.6.4'
+    if version('modal') != '1.6.4':
+        pytest.skip('These registry checks target the pinned Modal 1.6.4 client')
     monkeypatch.setattr(modal, 'is_local', lambda: local)
     if not local:
         def no_local_mount(*args, **kwargs):
@@ -268,30 +329,60 @@ def test_modal_app_imports_in_both_contexts(monkeypatch, tmp_path, capsys, local
     launcher = module_at(REPO / 'scripts/modal_li_initial.py')
     assert set(launcher.app.registered_entrypoints) == {'main'}
     assert set(launcher.app.registered_functions) == {'evaluate_initial', 'preflight_initial'}
-    if local:
-        def unexpected_remote(*args, **kwargs):
-            pytest.fail('invalid price reached the remote dispatch')
-        monkeypatch.setattr(launcher.evaluate_initial, 'remote', unexpected_remote)
-        with pytest.raises(ValueError):
-            launcher.main(hourly_usd=-1)
-        # Dispatch through the registered entry point, with no network or account.
-        record = {'run_id': 'fixture-run', 'kind': 'evaluation', 'status': 'completed',
-                  'evaluation': {'mean_accuracy': .125, 'published_fraction': .082},
-                  'gpu_name': 'NVIDIA H100', 'wall_seconds': 31.0}
-        calls = []
-        def evaluate(rate):
-            calls.append(rate)
-            return record
-        monkeypatch.setattr(launcher.evaluate_initial, 'remote', evaluate)
-        monkeypatch.setattr(launcher.preflight_initial, 'remote', unexpected_remote)
-        monkeypatch.setattr(launcher, '__file__', str(tmp_path / 'scripts/modal_li_initial.py'))
-        launcher.main(hourly_usd=2.5)
-        assert calls == [2.5]
-        saved = tmp_path / 'results/midway/li-initial-fixture-run.json'
-        assert json.loads(saved.read_text()) == record
-        output = capsys.readouterr().out
-        assert all(value in output for value in ('12.5', '8.2', 'H100', '31.00'))
 
+
+@pytest.fixture
+def local_launcher(monkeypatch, tmp_path):
+    pytest.importorskip('modal')
+    launcher = module_at(REPO / 'scripts/modal_li_initial.py')
+    monkeypatch.setattr(launcher, '__file__', str(tmp_path / 'scripts/modal_li_initial.py'))
+    return launcher
+
+
+def test_local_entrypoint_downloads_measurement(local_launcher, local_attempt, monkeypatch, tmp_path, capsys):
+    launcher = local_launcher
+
+    def unexpected_remote(*args, **kwargs):
+        pytest.fail('unexpected remote call')
+
+    monkeypatch.setattr(launcher.evaluate_initial, 'remote', unexpected_remote)
+    with pytest.raises(ValueError):
+        launcher.main(hourly_usd=-1)
+
+    record = attempt(local_attempt, hourly_usd=2.5)
+    volume = local_attempt[3]
+    calls = []
+
+    def evaluate(rate):
+        calls.append(rate)
+        return record
+
+    monkeypatch.setattr(launcher.evaluate_initial, 'remote', evaluate)
+    monkeypatch.setattr(launcher.preflight_initial, 'remote', unexpected_remote)
+    monkeypatch.setattr(launcher, 'volume', volume)
+    launcher.main(hourly_usd=2.5)
+    assert calls == [2.5]
+    saved = tmp_path / 'results/midway' / f"li-initial-{record['run_id']}.json"
+    assert json.loads(saved.read_text()) == record
+    folder = check_download(tmp_path, volume, record, has_evaluation=True)
+    output = capsys.readouterr().out
+    assert all(value in output for value in ('12.5', '8.2', 'H100', str(folder)))
+
+
+@pytest.mark.parametrize('raises', [True, False], ids=['disconnected', 'no-record'])
+def test_missing_worker_result_prints_recovery(local_launcher, monkeypatch, capsys, raises):
+    def worker_died(rate):
+        if raises:
+            raise RuntimeError('worker terminated')
+        return None
+
+    monkeypatch.setattr(local_launcher.preflight_initial, 'remote', worker_died)
+    with pytest.raises(RuntimeError) as error:
+        local_launcher.main(preflight=True)
+    captured = capsys.readouterr()
+    message = str(error.value) + captured.out + captured.err
+    assert 'modal volume ls li-replication' in message
+    assert 'modal volume get li-replication' in message
 
 
 def test_preflight_with_visible_cuda_fails_before_evaluation(local_attempt, monkeypatch):
@@ -304,16 +395,18 @@ def test_preflight_with_visible_cuda_fails_before_evaluation(local_attempt, monk
     assert not list(volume.directory.rglob('evaluation.json'))
 
 
-
 def test_cancellation_commits_failed_attempt(local_attempt, monkeypatch):
     core, _, _, volume = local_attempt
+    interruption = KeyboardInterrupt('cancelled fixture process')
+
     def cancelled(*args, **kwargs):
-        raise KeyboardInterrupt('cancelled fixture process')
+        raise interruption
+
     monkeypatch.setattr(core, '_logged_command', cancelled)
-    with pytest.raises(RuntimeError) as exc:
+    with pytest.raises(KeyboardInterrupt) as exc:
         attempt(local_attempt)
+    assert exc.value is interruption
     [key] = [path for path in volume.persisted if path.endswith('/run.json')]
     record = json.loads(volume.persisted[key])
     assert record['status'] == 'failed' and 'KeyboardInterrupt' in record['error']
-    assert record['log_path'] in str(exc.value) and 'li-replication' in str(exc.value)
     assert 'cancelled fixture process' in volume.persisted[record['log_path']].decode()

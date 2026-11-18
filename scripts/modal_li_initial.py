@@ -2,6 +2,7 @@
 import csv
 from collections import deque
 from datetime import datetime, timezone
+import filecmp
 import hashlib
 import json
 import math
@@ -103,7 +104,7 @@ def _read_evaluation(path):
 
 def run_attempt(upstream: Path, wrapper: Path, volume_root: Path, commit, *,
                 preflight: bool = False, hourly_usd: float | None = None) -> dict:
-    """Create and commit an isolated attempt. A failed preflight returns for remote readback."""
+    """Commit the attempt and return its record, including ordinary evaluator failures."""
     validate_hourly_usd(hourly_usd)
     upstream, wrapper, volume_root = (Path(p).resolve() for p in (upstream, wrapper, volume_root))
     started = _utc()
@@ -224,6 +225,8 @@ def run_attempt(upstream: Path, wrapper: Path, volume_root: Path, commit, *,
             record.setdefault("stopping_point", record["error"])
             print(record["error"], file=stream, flush=True)
             print(record["error"], flush=True)
+            if not isinstance(error, Exception):
+                raise  # The finally block commits the failure before Modal sees the interruption.
         finally:
             elapsed = time.monotonic() - started_clock
             record["finished_utc"] = _utc()
@@ -238,43 +241,85 @@ def run_attempt(upstream: Path, wrapper: Path, volume_root: Path, commit, *,
             except Exception as error:
                 raise RuntimeError(f"Could not commit final record and log to Volume {VOLUME_NAME} "
                                    f"at {record['log_path']}: {error}") from error
-    if record["status"] != "completed" and not preflight:
-        raise RuntimeError(f"Li initial evaluation failed. Volume {VOLUME_NAME}, log {record['log_path']}. "
-                           f"{record['error']}")
     return record
 
 
-def finish_local(record: dict, repo_root: Path, volume) -> None:
-    """Present the remote outcome and preserve successful numerical measurements locally."""
-    run_id = record["run_id"]
-    if record["kind"] == "preflight":
-        try:
-            persisted = json.loads(b"".join(volume.read_file(record["record_path"])))
-            digest = hashlib.sha256()
-            for chunk in volume.read_file(record["log_path"]):
+def download_attempt(record: dict, folder: Path, volume) -> None:
+    """Publish a complete verified copy. Preserve the original bytes of each artifact."""
+    folder.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=folder.parent) as tmp:
+        stage = Path(tmp)
+        raw_record = b"".join(volume.read_file(f"{folder.name}/run.json"))
+        persisted = json.loads(raw_record)
+        if persisted != record:
+            raise ValueError("Volume run.json differs from the returned record")
+        (stage / "run.json").write_bytes(raw_record)
+
+        digest = hashlib.sha256()
+        with (stage / "run.log").open("wb") as log:
+            for chunk in volume.read_file(f"{folder.name}/run.log"):
+                log.write(chunk)
                 digest.update(chunk)
-            if persisted != record or digest.hexdigest() != record["log_sha256"]:
-                raise ValueError("persisted record or log differs from the remote result")
-        except Exception as error:
-            raise RuntimeError(f"Preflight FAIL. Could not verify Volume {VOLUME_NAME}, "
-                               f"log {record['log_path']}: {error}") from error
-        passed = record["status"] == "completed"
-        msg = (f"CPU preflight {'PASS' if passed else 'FAIL'} — {record['stopping_point']}. "
-               f"Verified record and log on Volume {VOLUME_NAME}: {record['log_path']}")
-        print(msg)
-        if not passed:
-            raise RuntimeError(msg)
-        return
+        if digest.hexdigest() != persisted["log_sha256"]:
+            raise ValueError("run.log SHA-256 differs from run.json")
+
+        if record["kind"] == "evaluation":
+            try:
+                evaluation = b"".join(volume.read_file(f"{folder.name}/initial/evaluation.json"))
+            except FileNotFoundError:
+                if record["status"] == "completed":
+                    raise
+            else:
+                (stage / "initial").mkdir()
+                (stage / "initial/evaluation.json").write_bytes(evaluation)
+
+        if folder.exists():
+            for source in stage.rglob("*"):
+                if source.is_file() and not filecmp.cmp(source, folder / source.relative_to(stage), shallow=False):
+                    raise FileExistsError(f"Existing local copy differs: {folder / source.relative_to(stage)}")
+        else:
+            stage.rename(folder)
+
+
+def _recover_command(run_id):
+    return f"mkdir -p runs/replication && modal volume get {VOLUME_NAME} {run_id} runs/replication/"
+
+
+def finish_local(record: dict, repo_root: Path, volume) -> None:
+    """Save a completed measurement first, then retrieve the worker's diagnostic files."""
+    run_id = record["run_id"]
+    folder = repo_root / "runs/replication" / run_id
+    measured = record["kind"] == "evaluation" and record["status"] == "completed"
+    save_error = None
+    if measured:
+        out = repo_root / "results/midway" / f"li-initial-{run_id}.json"
+        result = record["evaluation"]
+        print(f"Initial accuracy {result['mean_accuracy']:.2%}, published {result['published_fraction']:.1%}. "
+              f"GPU {record['gpu_name']}, wall time {record['wall_seconds']:.2f} seconds.")
+        try:
+            out.parent.mkdir(parents=True, exist_ok=True)
+            if out.exists() and json.loads(out.read_text(encoding="utf-8")) != record:
+                raise FileExistsError(out)
+            _write_json(out, record)
+            print(f"Measurement record: {out}")
+        except (OSError, ValueError) as error:
+            save_error = error  # Still recover the Volume copy.
+
+    try:
+        download_attempt(record, folder, volume)
+        print(f"Verified attempt folder: {folder}")
+    except Exception as error:
+        message = f"Could not download and verify {folder}: {error}\n{_recover_command(run_id)}"
+        if not measured:
+            detail = record.get("error", record.get("stopping_point", ""))
+            raise RuntimeError(f"{record['kind']} FAIL. {detail}\n{message}") from error
+        print(f"Warning: {message}", file=sys.stderr)
+    if save_error is not None:
+        raise RuntimeError(f"Could not save the completed measurement to {out}: {save_error}") from save_error
     if record["status"] != "completed":
-        raise RuntimeError(f"Evaluation failed. Volume {VOLUME_NAME}, log {record['log_path']}")
-    out = Path(repo_root) / "results/midway" / f"li-initial-{run_id}.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    if out.exists() and json.loads(out.read_text(encoding="utf-8")) != record:
-        raise FileExistsError(out)
-    _write_json(out, record)
-    result = record["evaluation"]
-    print(f"Initial accuracy {result['mean_accuracy']:.2%}, published {result['published_fraction']:.1%}. "
-          f"GPU {record['gpu_name']}, wall time {record['wall_seconds']:.2f} seconds. {out}")
+        raise RuntimeError(f"{record['kind']} FAIL. {record['error']}\nLocal attempt folder: {folder}")
+    if record["kind"] == "preflight":
+        print(f"CPU preflight PASS — {record['stopping_point']}")
 
 
 def rename_project(upstream):
@@ -350,7 +395,16 @@ if modal is not None:
         """Run the CPU preflight or measure initial accuracy. hourly_usd is the total machine rate."""
         validate_hourly_usd(hourly_usd)
         worker = preflight_initial if preflight else evaluate_initial
-        record = worker.remote(hourly_usd)
+        try:
+            record = worker.remote(hourly_usd)
+            if record is None:
+                raise RuntimeError("Worker returned no attempt record")
+        except BaseException:
+            print(f"No attempt record received. Find the newest matching UTC attempt on the Volume:\n"
+                  f"modal volume ls {VOLUME_NAME}\n"
+                  f"Replace RUN_ID in this command with its directory name:\n{_recover_command('RUN_ID')}",
+                  file=sys.stderr)
+            raise
         finish_local(record, Path(__file__).resolve().parents[1], volume)
         return record
 
