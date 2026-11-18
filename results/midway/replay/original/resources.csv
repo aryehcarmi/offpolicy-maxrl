@@ -1,0 +1,4 @@
+phase,seconds,responses,generated_tokens,machine_usd,device,gpu,hourly_usd
+gradient_and_replay,99.70507227,0,0,0.03663053571786167,cuda,NVIDIA A10G,1.3226
+setup_io_other,2.884999207000007,0,0,0.001059916653105058,cuda,NVIDIA A10G,1.3226
+total,102.59007147700001,0,0,0.03769045237096673,cuda,NVIDIA A10G,1.3226

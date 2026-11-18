@@ -1,0 +1,45 @@
+{
+  "pilot_run_id": "f8612d7937024ec7839671e9f069a568",
+  "initial_checkpoint_id": "Qwen/Qwen3-0.6B@c1899de289a04d12100db370d81485cdf75e47ca",
+  "source_sha256": {
+    "run.json": "67563e6caf07264cd3df199ee74241b86c9f4d758ca47a5ac0836753a3af9c9b",
+    "metrics.jsonl": "e137a0cda9cb4d7432431d456266d135930f5f6b5861a8161ebc01f58f6d3533",
+    "responses/train-000001.jsonl": "0a77f8b20f5ff7a838162a8df09446a05abcef1910ab3700eeffd6e23e00537b",
+    "responses/train-000002.jsonl": "dee04d38b4ca7e87185e21185975d51a2e4b29bf882efb24dd93de1b3babb2e5"
+  },
+  "hardware": {
+    "python": "3.12.3",
+    "platform": "Linux-4.19.0-gvisor-x86_64-with-glibc2.36",
+    "device": "cuda",
+    "gpu": "NVIDIA A10G",
+    "cuda": "12.8",
+    "torch": "2.8.0+cu128",
+    "transformers": "4.57.1",
+    "numpy": "2.2.6",
+    "runtime": {
+      "device": "cuda",
+      "dtype": "float32",
+      "generation_batch": 8,
+      "score_batch": 1,
+      "hourly_usd": 1.3226
+    }
+  },
+  "rates": [
+    1e-06,
+    3e-06,
+    1e-05,
+    3e-05,
+    0.0001,
+    0.001
+  ],
+  "gradient_norm": 361.0347900390625,
+  "pilot_gradient_norm": 361.0318908691406,
+  "chosen_rate": null,
+  "stop_reason": "At 1e-6 the realized objective change was outside 80\u2013120% of prediction.",
+  "objective": "Sum over first-batch successes of initial detached W times current sequence log probability divided by K and by the total number of prompts. K is the number of successes on that prompt.",
+  "prediction": "rate times squared L2 norm of the trainer's first-batch gradient",
+  "count_weight_objective_change": "Auxiliary change in the sum of updated importance weights over first-batch successes divided by K and the number of prompts. Empty if outside float64 range.",
+  "heldout": "Natural log of updated policy probability over recorded sampler probability for each response in the second batch, including sampled EOS. Quantiles use linear interpolation. Raw weights are averaged arithmetically within each reward class.",
+  "rounding": "Let a = updated float32 parameters minus their initial values, and d = -rate times the initial loss gradient. Projection is dot(a,d)/dot(d,d), norm fraction is ||a||/||d||, changed fraction is nnz(a)/nnz(d). Differences and sums use float64.",
+  "selection": "Require 0.8 <= realized/predicted <= 1.2 at 1e-6. Then choose the largest rate with realized/predicted >= 0.5 and at least 95% of all individual held-out log weights inside [-0.1, 0.1]."
+}
