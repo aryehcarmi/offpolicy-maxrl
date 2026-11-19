@@ -528,9 +528,9 @@ def build_image(repo):
         .run_commands("uv sync --frozen --all-extras --no-cache")
         .run_commands(f"uv pip install --target {TEST_SDK} --no-cache modal==1.6.4")
     )
-    for folder in ("configs", "scripts", "tests"):
+    for folder in ("configs", "scripts", "tests", "results/midway"):
         image = image.add_local_dir(repo / folder, str(REMOTE_REPO / folder), ignore=["__pycache__"])
-    return image
+    return image.add_local_file(repo / "docs/research-log.md", str(REMOTE_REPO / "docs/research-log.md"))
 
 
 def _gpu_name():

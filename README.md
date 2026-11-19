@@ -1,5 +1,9 @@
 # Off-policy MaxRL
 
+**Start here**
+
+[Countdown midpoint results](results/midway/README.md) · [Li et al. replication guide](docs/replication.md) · [Research log](docs/research-log.md)
+
 Experiments on success normalization for off-policy MaxRL, using exact toy models and Qwen3-0.6B on Countdown.
 
 **Count** divides the importance-weighted score sum by the number of successful responses. **SNIS** divides the same sum by the total importance weight of those successes. For one nonempty group, the two updates have the same direction. Their different scales can change the direction of a batch update across puzzles. The primary training comparison is final test pass@1, SNIS minus Count, over five matched seeds.
