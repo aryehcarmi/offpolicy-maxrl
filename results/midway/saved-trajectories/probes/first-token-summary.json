@@ -1,0 +1,35 @@
+{
+  "rate": 1e-06,
+  "method": "count",
+  "training_step": 1,
+  "heldout_batch": 2,
+  "opening_token_id": 27,
+  "source_run_id": "f8612d7937024ec7839671e9f069a568",
+  "definition": "Changes subtract initial-policy from updated-policy teacher-forced log probabilities for each response. Saved sampler denominators cancel in the change. Individual fractions are signed and can exceed one.",
+  "groups": {
+    "all": {
+      "n": 256,
+      "mean_first_change": -0.07949361263308674,
+      "mean_full_change": -0.08211534552996944,
+      "mean_remaining_change": -0.0026217328968826947,
+      "ratio_of_mean_changes": 0.9680725584242248,
+      "median_first_fraction": 0.9575471045551094
+    },
+    "opens_angle": {
+      "n": 73,
+      "mean_first_change": -0.5957874957829306,
+      "mean_full_change": -0.5924130423547673,
+      "mean_remaining_change": 0.0033744534281632266,
+      "ratio_of_mean_changes": 1.005696116032068,
+      "median_first_fraction": 1.000391280974723
+    },
+    "other": {
+      "n": 183,
+      "mean_first_change": 0.12645968501685095,
+      "mean_full_change": 0.12144603079904828,
+      "mean_remaining_change": -0.005013654217802671,
+      "ratio_of_mean_changes": 1.0412829812947824,
+      "median_first_fraction": 0.44546832209259835
+    }
+  }
+}

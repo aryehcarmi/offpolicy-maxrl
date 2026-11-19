@@ -1,0 +1,1824 @@
+{
+  "group_size": 8,
+  "results": {
+    "initial": {
+      "stale_batches": 8,
+      "reference_batches": 16,
+      "bootstrap_seed": 7001,
+      "bootstrap_repeats": 500,
+      "reference_split_half_cosine": {
+        "point_overflow": false,
+        "overflow_bootstrap_draws": 0,
+        "estimate": 0.36589392397573545,
+        "ci95": [
+          -0.2056331827683584,
+          0.5530693067597852
+        ],
+        "defined_bootstrap_draws": 500
+      },
+      "methods": {
+        "uncorrected": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.5183267241774264,
+            "ci95": [
+              0.02365811005674896,
+              0.5903156637807424
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.3334596830264317,
+            "ci95": [
+              0.2791986505781296,
+              0.5034037870867176
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_reference_norm": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 2.027767497513589,
+            "ci95": [
+              1.0319602149240177,
+              2.7209606351529643
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "zero_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.0,
+            "ci95": [
+              0.0,
+              0.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0,
+            "ci95": [
+              1.0,
+              1.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.39877562857737636,
+            "ci95": [
+              0.3425695206984515,
+              0.5737481774746778
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_snis_norm_on_matched": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.9005195681786842,
+            "ci95": [
+              0.8423074767050504,
+              0.9504926499264627
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_split_half_cosine": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.10434584515976966,
+            "ci95": [
+              -0.24553264484863346,
+              0.35113042685289714
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_direction_status": "unresolved"
+        },
+        "count": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.5053100773812909,
+            "ci95": [
+              -0.027475943116839315,
+              0.6014641582840172
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.5024550620728316,
+            "ci95": [
+              0.38877931342076266,
+              0.7467179241027426
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_reference_norm": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 2.496529847651684,
+            "ci95": [
+              1.2430724447158643,
+              3.342425482757391
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "zero_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.0,
+            "ci95": [
+              0.0,
+              0.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0,
+            "ci95": [
+              1.0,
+              1.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.40637536807343694,
+            "ci95": [
+              0.3462192763442656,
+              0.5862136671705916
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_snis_norm_on_matched": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.1000377574012248,
+            "ci95": [
+              1.029055122574165,
+              1.1703128163143086
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_split_half_cosine": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.06325809266177193,
+            "ci95": [
+              -0.31319546755327266,
+              0.3380127737957443
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_direction_status": "unresolved"
+        },
+        "snis": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.5457887196948827,
+            "ci95": [
+              -0.016280754404271035,
+              0.627030209448916
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.39643493534486707,
+            "ci95": [
+              0.333009451691309,
+              0.5726774762096897
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_reference_norm": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 2.248164850053254,
+            "ci95": [
+              1.1274448971764033,
+              2.991903292875297
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "zero_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.0,
+            "ci95": [
+              0.0,
+              0.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0,
+            "ci95": [
+              1.0,
+              1.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.39643493534486707,
+            "ci95": [
+              0.333009451691309,
+              0.5726774762096897
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_snis_norm_on_matched": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0,
+            "ci95": [
+              1.0,
+              1.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_split_half_cosine": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.11938426873633971,
+            "ci95": [
+              -0.33290126655774444,
+              0.43552621483550524
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_direction_status": "unresolved"
+        },
+        "count_cap": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.5053100773812909,
+            "ci95": [
+              -0.027475943116839315,
+              0.6014641582840172
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.5024550620728316,
+            "ci95": [
+              0.38877931342076266,
+              0.7467179241027426
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_reference_norm": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 2.496529847651684,
+            "ci95": [
+              1.2430724447158643,
+              3.342425482757391
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "zero_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.0,
+            "ci95": [
+              0.0,
+              0.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0,
+            "ci95": [
+              1.0,
+              1.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.40637536807343694,
+            "ci95": [
+              0.3462192763442656,
+              0.5862136671705916
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_snis_norm_on_matched": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.1000377574012248,
+            "ci95": [
+              1.029055122574165,
+              1.1703128163143086
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_split_half_cosine": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.06325809266177193,
+            "ci95": [
+              -0.3377968454087453,
+              0.3331113931720372
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_direction_status": "unresolved"
+        },
+        "snis_cap": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.5457887196948827,
+            "ci95": [
+              -0.016280754404271035,
+              0.627030209448916
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.39643493534486707,
+            "ci95": [
+              0.333009451691309,
+              0.5726774762096897
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_reference_norm": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 2.248164850053254,
+            "ci95": [
+              1.1274448971764033,
+              2.991903292875297
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "zero_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.0,
+            "ci95": [
+              0.0,
+              0.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0,
+            "ci95": [
+              1.0,
+              1.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.39643493534486707,
+            "ci95": [
+              0.333009451691309,
+              0.5726774762096897
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_snis_norm_on_matched": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0,
+            "ci95": [
+              1.0,
+              1.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_split_half_cosine": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.11938426873633971,
+            "ci95": [
+              -0.31872971962798674,
+              0.43433642887547314
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_direction_status": "unresolved"
+        },
+        "loo": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.5033760068214677,
+            "ci95": [
+              -0.12683721498872322,
+              0.6246662747777132
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.6241474349724957,
+            "ci95": [
+              0.42955294689040185,
+              0.9685380732238907
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_reference_norm": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 2.7711463079822742,
+            "ci95": [
+              1.341382698842834,
+              3.780227311020238
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "zero_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.0,
+            "ci95": [
+              0.0,
+              0.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0,
+            "ci95": [
+              1.0,
+              1.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.40121544355825994,
+            "ci95": [
+              0.3364927977566196,
+              0.5861741548062749
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_snis_norm_on_matched": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.2259410878869372,
+            "ci95": [
+              1.0865240777942473,
+              1.3783051321351085
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_split_half_cosine": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.028940316932076448,
+            "ci95": [
+              -0.40919675651546894,
+              0.45099592139475414
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_direction_status": "unresolved"
+        },
+        "loo_cap": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.5382928420541555,
+            "ci95": [
+              -0.07441513365037844,
+              0.6364092442877375
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.5587835501078713,
+            "ci95": [
+              0.429152022748378,
+              0.8068476032110028
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_reference_norm": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 2.6589682773499392,
+            "ci95": [
+              1.3315535402214977,
+              3.5976506030503184
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "zero_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.0,
+            "ci95": [
+              0.0,
+              0.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0,
+            "ci95": [
+              1.0,
+              1.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.4003903274003832,
+            "ci95": [
+              0.3366871435177127,
+              0.5817904785901299
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_snis_norm_on_matched": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.175145090183294,
+            "ci95": [
+              1.0843648571365558,
+              1.2555553470781542
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_split_half_cosine": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.11598120512482384,
+            "ci95": [
+              -0.3809191568852047,
+              0.4524575793903885
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_direction_status": "unresolved"
+        },
+        "hybrid": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.5373664571059629,
+            "ci95": [
+              -0.01564727289108223,
+              0.6211753559976433
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.46176823149609,
+            "ci95": [
+              0.35945450281063135,
+              0.7033325103520968
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_reference_norm": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 2.4036179476343085,
+            "ci95": [
+              1.2018976263381504,
+              3.2228967978760106
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "zero_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.0,
+            "ci95": [
+              0.0,
+              0.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0,
+            "ci95": [
+              1.0,
+              1.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.4000598036444301,
+            "ci95": [
+              0.33996198241093295,
+              0.577177872218604
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_snis_norm_on_matched": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0586541339831037,
+            "ci95": [
+              1.0013732210479676,
+              1.1213429457291133
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_split_half_cosine": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.1170777309696418,
+            "ci95": [
+              -0.3264189172771464,
+              0.3945989289502313
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_direction_status": "unresolved"
+        }
+      },
+      "paired_differences": {
+        "snis_minus_count": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.040478642313591884,
+            "ci95": [
+              -0.021959111548787043,
+              0.09301076837888768
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": -0.10602012672796457,
+            "ci95": [
+              -0.19056577046760317,
+              -0.037369780349033106
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": -0.00994043272856987,
+            "ci95": [
+              -0.029178822209271437,
+              0.002284192107616566
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batches": 8
+        },
+        "loo_cap_minus_count": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.03298276467286465,
+            "ci95": [
+              -0.08673148592506735,
+              0.08664000959018488
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.05632848803503965,
+            "ci95": [
+              -0.011576776649217328,
+              0.14213923741667417
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": -0.005985040673053721,
+            "ci95": [
+              -0.027504214501001285,
+              0.009064716719679695
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batches": 8
+        },
+        "loo_cap_minus_snis": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": -0.007495877640727233,
+            "ci95": [
+              -0.09785866974132161,
+              0.0248530149861426
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.16234861476300422,
+            "ci95": [
+              0.07540101561614097,
+              0.26462939283214
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.003955392055516149,
+            "ci95": [
+              -0.0038284475296614905,
+              0.015642931722079815
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batches": 8
+        },
+        "hybrid_minus_count": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.03205637972467201,
+            "ci95": [
+              -0.013165420850764145,
+              0.07589323277559493
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": -0.04068683057674166,
+            "ci95": [
+              -0.05940737910133803,
+              -0.01964934380156751
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": -0.006315564429006826,
+            "ci95": [
+              -0.02035655318983743,
+              0.00289645369481241
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batches": 8
+        },
+        "hybrid_minus_snis": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": -0.008422262588919871,
+            "ci95": [
+              -0.028642708480671297,
+              0.020806623531491
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.06533329615122291,
+            "ci95": [
+              0.007893119908824315,
+              0.14369907969542414
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.0036248682995630443,
+            "ci95": [
+              -0.0009225922237980174,
+              0.01116504496264278
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batches": 8
+        }
+      },
+      "numerical_failures": {},
+      "success_count_histogram": [
+        30,
+        8,
+        11,
+        6,
+        4,
+        5,
+        0,
+        0,
+        0
+      ],
+      "log_weight_quantiles_0_50_95_100": [
+        -0.6667875075872889,
+        0.006062331890518635,
+        0.4002827654829161,
+        0.7496159197450822
+      ]
+    },
+    "current": {
+      "stale_batches": 8,
+      "reference_batches": 16,
+      "bootstrap_seed": 7001,
+      "bootstrap_repeats": 500,
+      "reference_split_half_cosine": {
+        "point_overflow": false,
+        "overflow_bootstrap_draws": 0,
+        "estimate": 0.36589392397573545,
+        "ci95": [
+          -0.2056331827683584,
+          0.5530693067597852
+        ],
+        "defined_bootstrap_draws": 500
+      },
+      "methods": {
+        "uncorrected": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": -0.15444729170234067,
+            "ci95": [
+              -0.5011893466035778,
+              0.3635257811736495
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.7485414356638387,
+            "ci95": [
+              0.5918890264870257,
+              1.0926791687496267
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_reference_norm": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 2.8585517343510647,
+            "ci95": [
+              1.4566475995109396,
+              3.7341361243911053
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "zero_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.0,
+            "ci95": [
+              0.0,
+              0.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0,
+            "ci95": [
+              1.0,
+              1.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.7485471931429496,
+            "ci95": [
+              0.5919029885693079,
+              1.0926756460824678
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_snis_norm_on_matched": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.9999923087088077,
+            "ci95": [
+              0.9999833716724915,
+              1.0000003187479751
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_split_half_cosine": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.14906010472911585,
+            "ci95": [
+              -0.31028118140562294,
+              0.4763418022722023
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_direction_status": "unresolved"
+        },
+        "count": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": -0.15442376231870564,
+            "ci95": [
+              -0.5011791075435796,
+              0.3635487897450497
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.7485657441700793,
+            "ci95": [
+              0.5919156765910739,
+              1.0926702176979342
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_reference_norm": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 2.858628319558188,
+            "ci95": [
+              1.4567190338587934,
+              3.734217338939317
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "zero_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.0,
+            "ci95": [
+              0.0,
+              0.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0,
+            "ci95": [
+              1.0,
+              1.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.7485438721885929,
+            "ci95": [
+              0.5918991343160731,
+              1.092675127498089
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_snis_norm_on_matched": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0000240974767594,
+            "ci95": [
+              0.9999826849653359,
+              1.0000622008627635
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_split_half_cosine": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.1489447276051915,
+            "ci95": [
+              -0.29963314477182146,
+              0.43557588924154417
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_direction_status": "unresolved"
+        },
+        "snis": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": -0.15442944117305488,
+            "ci95": [
+              -0.5011830684736727,
+              0.36353761337155255
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.7485441240361796,
+            "ci95": [
+              0.5919015157402349,
+              1.0926723928790854
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_reference_norm": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 2.8585692346928258,
+            "ci95": [
+              1.456658365696824,
+              3.734154695607018
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "zero_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.0,
+            "ci95": [
+              0.0,
+              0.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0,
+            "ci95": [
+              1.0,
+              1.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.7485441240361796,
+            "ci95": [
+              0.5919015157402349,
+              1.0926723928790854
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_snis_norm_on_matched": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0,
+            "ci95": [
+              1.0,
+              1.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_split_half_cosine": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.1490050008007744,
+            "ci95": [
+              -0.3219039292368112,
+              0.44969641747688405
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_direction_status": "unresolved"
+        },
+        "count_cap": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": -0.15442376231870564,
+            "ci95": [
+              -0.5011791075435796,
+              0.3635487897450497
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.7485657441700793,
+            "ci95": [
+              0.5919156765910739,
+              1.0926702176979342
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_reference_norm": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 2.858628319558188,
+            "ci95": [
+              1.4567190338587934,
+              3.734217338939317
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "zero_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.0,
+            "ci95": [
+              0.0,
+              0.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0,
+            "ci95": [
+              1.0,
+              1.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.7485438721885929,
+            "ci95": [
+              0.5918991343160731,
+              1.092675127498089
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_snis_norm_on_matched": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0000240974767594,
+            "ci95": [
+              0.9999826849653359,
+              1.0000622008627635
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_split_half_cosine": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.1489447276051915,
+            "ci95": [
+              -0.31340699748975226,
+              0.4601409393309207
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_direction_status": "unresolved"
+        },
+        "snis_cap": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": -0.15442944117305488,
+            "ci95": [
+              -0.5011830684736727,
+              0.36353761337155255
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.7485441240361796,
+            "ci95": [
+              0.5919015157402349,
+              1.0926723928790854
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_reference_norm": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 2.8585692346928258,
+            "ci95": [
+              1.456658365696824,
+              3.734154695607018
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "zero_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.0,
+            "ci95": [
+              0.0,
+              0.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0,
+            "ci95": [
+              1.0,
+              1.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.7485441240361796,
+            "ci95": [
+              0.5919015157402349,
+              1.0926723928790854
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_snis_norm_on_matched": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0,
+            "ci95": [
+              1.0,
+              1.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_split_half_cosine": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.1490050008007744,
+            "ci95": [
+              -0.3121348424216077,
+              0.4539689219908159
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_direction_status": "unresolved"
+        },
+        "loo": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": -0.15444422637460814,
+            "ci95": [
+              -0.501194197362194,
+              0.3635398737858697
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.748571813826062,
+            "ci95": [
+              0.591912334088155,
+              1.0926978188830385
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_reference_norm": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 2.8586291311220027,
+            "ci95": [
+              1.4567110486453894,
+              3.734221615394541
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "zero_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.0,
+            "ci95": [
+              0.0,
+              0.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0,
+            "ci95": [
+              1.0,
+              1.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.7485465332690618,
+            "ci95": [
+              0.5919016651835818,
+              1.092678560979688
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_snis_norm_on_matched": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0000226920120925,
+            "ci95": [
+              0.9999907953589893,
+              1.0000551742361472
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_split_half_cosine": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.14896115082947142,
+            "ci95": [
+              -0.3087925675554148,
+              0.45629395053036553
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_direction_status": "unresolved"
+        },
+        "loo_cap": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": -0.15444422637460814,
+            "ci95": [
+              -0.501194197362194,
+              0.3635398737858697
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.748571813826062,
+            "ci95": [
+              0.591912334088155,
+              1.0926978188830385
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_reference_norm": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 2.8586291311220027,
+            "ci95": [
+              1.4567110486453894,
+              3.734221615394541
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "zero_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.0,
+            "ci95": [
+              0.0,
+              0.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0,
+            "ci95": [
+              1.0,
+              1.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.7485465332690618,
+            "ci95": [
+              0.5919016651835818,
+              1.092678560979688
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_snis_norm_on_matched": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0000226920120925,
+            "ci95": [
+              0.9999907953589893,
+              1.0000551742361472
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_split_half_cosine": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.14896115082947142,
+            "ci95": [
+              -0.3189842592134297,
+              0.4564928330211453
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_direction_status": "unresolved"
+        },
+        "hybrid": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": -0.15445489425177492,
+            "ci95": [
+              -0.5011978337750027,
+              0.3635315319683617
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.7485718333193471,
+            "ci95": [
+              0.5919080464471629,
+              1.0927029454946924
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_reference_norm": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 2.858622413584466,
+            "ci95": [
+              1.4567071406958074,
+              3.734216059031732
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "zero_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.0,
+            "ci95": [
+              0.0,
+              0.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0,
+            "ci95": [
+              1.0,
+              1.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.74854858962281,
+            "ci95": [
+              0.5919027060771435,
+              1.0926811451749294
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_snis_norm_on_matched": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0000195496937254,
+            "ci95": [
+              0.9999888298555779,
+              1.0000509902622239
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_split_half_cosine": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.14898849819914767,
+            "ci95": [
+              -0.31104683815087514,
+              0.46183807676455885
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_direction_status": "unresolved"
+        },
+        "fresh": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": -0.15444729170234067,
+            "ci95": [
+              -0.5011893466035778,
+              0.3635257811736495
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.7485414356638387,
+            "ci95": [
+              0.5918890264870257,
+              1.0926791687496267
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_reference_norm": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 2.8585517343510647,
+            "ci95": [
+              1.4566475995109396,
+              3.7341361243911053
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "zero_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.0,
+            "ci95": [
+              0.0,
+              0.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batch_fraction": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 1.0,
+            "ci95": [
+              1.0,
+              1.0
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.7485471931429496,
+            "ci95": [
+              0.5919029885693079,
+              1.0926756460824678
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_batch_norm_over_snis_norm_on_matched": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.9999923087088077,
+            "ci95": [
+              0.9999833716724915,
+              1.0000003187479751
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_split_half_cosine": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 0.14906010472911585,
+            "ci95": [
+              -0.31344584066140446,
+              0.4283054340143823
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "mean_direction_status": "unresolved"
+        }
+      },
+      "paired_differences": {
+        "snis_minus_count": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": -5.678854349239204e-06,
+            "ci95": [
+              -4.298557708661971e-05,
+              2.8285111658206408e-05
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": -2.162013389961359e-05,
+            "ci95": [
+              -7.89035449038633e-05,
+              4.196767053505079e-05
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 2.5184758678520325e-07,
+            "ci95": [
+              -7.441315228406964e-06,
+              8.48089648639026e-06
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batches": 8
+        },
+        "loo_cap_minus_count": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": -2.0464055902502665e-05,
+            "ci95": [
+              -3.307128284736269e-05,
+              2.0844015515338037e-06
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 6.069655982710032e-06,
+            "ci95": [
+              -9.4750558033041e-06,
+              2.9509327955187792e-05
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 2.6610804689797263e-06,
+            "ci95": [
+              -9.093627349132657e-07,
+              8.398528937780809e-06
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batches": 8
+        },
+        "loo_cap_minus_snis": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": -1.478520155326346e-05,
+            "ci95": [
+              -3.041393321008036e-05,
+              1.727003566569483e-05
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 2.7689789882323623e-05,
+            "ci95": [
+              -2.011154445636376e-05,
+              7.767163016537681e-05
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 2.409232882194523e-06,
+            "ci95": [
+              -2.9642697645909653e-06,
+              9.869319695790521e-06
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batches": 8
+        },
+        "hybrid_minus_count": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": -3.1131933069278306e-05,
+            "ci95": [
+              -5.181085683791091e-05,
+              1.6412760114221936e-06
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 6.089149267807237e-06,
+            "ci95": [
+              -1.0869991196446603e-05,
+              3.266594179288372e-05
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 4.717434217149652e-06,
+            "ci95": [
+              -4.0868241348024354e-07,
+              1.3465156284664383e-05
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batches": 8
+        },
+        "hybrid_minus_snis": {
+          "cosine_of_mean": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": -2.5453078720039102e-05,
+            "ci95": [
+              -3.777549774134255e-05,
+              7.529670294115188e-06
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "raw_batch_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 2.770928316742083e-05,
+            "ci95": [
+              -1.7811114622490186e-05,
+              7.838274806316325e-05
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "norm_matched_mse": {
+            "point_overflow": false,
+            "overflow_bootstrap_draws": 0,
+            "estimate": 4.465586630364449e-06,
+            "ci95": [
+              -5.897316436687115e-07,
+              1.1622764611282643e-05
+            ],
+            "defined_bootstrap_draws": 500
+          },
+          "matched_batches": 8
+        }
+      },
+      "numerical_failures": {},
+      "success_count_histogram": [
+        22,
+        13,
+        9,
+        10,
+        8,
+        2,
+        0,
+        0,
+        0
+      ],
+      "log_weight_quantiles_0_50_95_100": [
+        -0.00041559683600667086,
+        6.292282463959964e-06,
+        0.00016162929954504076,
+        0.0003371835931318401
+      ]
+    }
+  },
+  "cpu_seconds": 0.9728454169999168,
+  "manifest_sha256": "3d780f09fab82dadad85b7dc6d78a801499018757135fa12d716f0fb7ac1d902"
+}

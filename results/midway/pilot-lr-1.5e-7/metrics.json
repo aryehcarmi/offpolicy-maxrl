@@ -1,0 +1,18 @@
+{
+  "prompts": 128,
+  "responses": 1024,
+  "generated_tokens": 200541,
+  "zero_success_frequency": 0.6640625,
+  "one_success_frequency": 0.1328125,
+  "success_counts": {
+    "0": 85,
+    "1": 17,
+    "2": 14,
+    "3": 6,
+    "4": 3,
+    "5": 3
+  },
+  "pass@1": 0.087890625,
+  "pass@8": 0.3359375,
+  "seconds": 1269.7897512549998
+}

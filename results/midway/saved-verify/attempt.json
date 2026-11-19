@@ -1,0 +1,22 @@
+{
+  "attempt_id": "saved-verify-20261118T235240138957Z-d21e01faf8bc",
+  "stage": "saved-verify",
+  "pilot_attempt": "pilot-20261118T190958601132Z-b80c6ef23f1c",
+  "git_commit": "438cc41115be59c3eabfcc77745a72af076d411e",
+  "git_dirty": false,
+  "status": "completed",
+  "started_utc": "2026-11-18T23:52:40.138934Z",
+  "gpu_name": "NVIDIA A10",
+  "gpu_type": "A10",
+  "hourly_usd": 1.3226,
+  "sha256": {
+    "gpu.csv": "10e3684c651f60b7b35082100ea0261ce7cccf5d6bb6622ee09a68953ef1479f",
+    "output/resources.csv": "c51d2bfaba89d67dda260c50b6a812fe6b266da47583ea2669ad4a0684429210",
+    "output/verification.json": "118ecad44f66bc3a937d2a1deead0bd55a43256aa2c6599f5ba58de426771936",
+    "run.log": "3bd4cf4d216a7b9d40f7a3b542d723a5976ef53c7d5ead649912b0adfc06f8cc"
+  },
+  "manifest_sha256": "abdb27fbeeefdae2c9f6cce441811af401e07937f9b6bd4693f8a5cabb556186",
+  "finished_utc": "2026-11-18T23:57:48.793140Z",
+  "wall_seconds": 308.58679302300004,
+  "estimated_cost_usd": 0.11337135901450551
+}

@@ -1,0 +1,4 @@
+phase,seconds,responses,generated_tokens,machine_usd,device,gpu,hourly_usd
+evaluation,1269.7897512549998,1024,200541,0.466506645836073,cuda,NVIDIA A10,1.3226
+setup_io_other,1.7718763740001577,0,0,0.0006509676922923913,cuda,NVIDIA A10,1.3226
+total,1271.561627629,1024,200541,0.4671576135283654,cuda,NVIDIA A10,1.3226

@@ -1,0 +1,75 @@
+{
+  "config": {
+    "model": "Qwen/Qwen3-0.6B",
+    "revision": "c1899de289a04d12100db370d81485cdf75e47ca",
+    "method": "count",
+    "seed": 18,
+    "lr": 1.5e-07,
+    "updates": 16,
+    "prompts_per_step": 32,
+    "responses_per_prompt": 8,
+    "refresh_every": 64,
+    "eval_every": 16,
+    "validation_samples": 8,
+    "test_samples": 16,
+    "max_new_tokens": 377,
+    "checkpoint_steps": [
+      8
+    ]
+  },
+  "runtime": {
+    "device": "cuda",
+    "dtype": "float32",
+    "generation_batch": 8,
+    "score_batch": 1,
+    "hourly_usd": 1.3226
+  },
+  "hardware": {
+    "python": "3.12.3",
+    "platform": "Linux-4.19.0-gvisor-x86_64-with-glibc2.36",
+    "device": "cuda",
+    "gpu": "NVIDIA A10",
+    "cuda": "12.8",
+    "torch": "2.8.0+cu128",
+    "transformers": "4.57.1",
+    "numpy": "2.2.6",
+    "runtime": {
+      "device": "cuda",
+      "dtype": "float32",
+      "generation_batch": 8,
+      "score_batch": 1,
+      "hourly_usd": 1.3226
+    }
+  },
+  "prompt": {
+    "id": "li-countdown-v1",
+    "sha256": "4f5d43804538532d4534aae9d1b9df74f95b2b64605bff1092c93c066e9a17da",
+    "source": "https://github.com/Skylanding/Training-Inference-Mismatch/blob/98e8f9fa15200f294c9395626969f745771ee460/tim/tasks/countdown.py",
+    "chat_template": {
+      "tokenize": true,
+      "add_generation_prompt": true,
+      "enable_thinking": false
+    }
+  },
+  "checkpoint_id": "6965d3addf15437a842c5dfefc68e70a/step-000016",
+  "panel": "validation",
+  "training_config": {
+    "model": "Qwen/Qwen3-0.6B",
+    "revision": "c1899de289a04d12100db370d81485cdf75e47ca",
+    "method": "count",
+    "seed": 17,
+    "lr": 1.5e-07,
+    "updates": 16,
+    "prompts_per_step": 32,
+    "responses_per_prompt": 8,
+    "refresh_every": 64,
+    "eval_every": 16,
+    "validation_samples": 8,
+    "test_samples": 16,
+    "max_new_tokens": 377,
+    "checkpoint_steps": [
+      16
+    ]
+  },
+  "manifest_sha256": "abdb27fbeeefdae2c9f6cce441811af401e07937f9b6bd4693f8a5cabb556186"
+}

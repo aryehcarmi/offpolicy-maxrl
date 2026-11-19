@@ -1,0 +1,41 @@
+{
+  "method": "count",
+  "step": 1,
+  "rate": 1.5e-07,
+  "gradient_norm": 361.0318908691406,
+  "definition": "Unique parameters, with tied token embedding/output head counted once. All RMSNorm gains, including attention Q/K norms, are in norm.",
+  "types": {
+    "embedding": {
+      "parameter_count": 155582464,
+      "changed_count": 361488,
+      "grad_squared_norm": 3708.30652537272,
+      "grad_squared_norm_share": 0.0284501471007408,
+      "fraction_changed_within_type": 0.0023234495116364784,
+      "share_of_all_changed_parameters": 0.002044591053056699
+    },
+    "attention": {
+      "parameter_count": 176160768,
+      "changed_count": 75106736,
+      "grad_squared_norm": 58053.65047569501,
+      "grad_squared_norm_share": 0.4453879107532809,
+      "fraction_changed_within_type": 0.42635336376371835,
+      "share_of_all_changed_parameters": 0.4248067998104819
+    },
+    "norm": {
+      "parameter_count": 65536,
+      "changed_count": 2384,
+      "grad_squared_norm": 194.57364021002599,
+      "grad_squared_norm_share": 0.0014927699876011381,
+      "fraction_changed_within_type": 0.036376953125,
+      "share_of_all_changed_parameters": 1.3484002430197324e-05
+    },
+    "mlp": {
+      "parameter_count": 264241152,
+      "changed_count": 101331496,
+      "grad_squared_norm": 68387.48874961534,
+      "grad_squared_norm_share": 0.5246691721583772,
+      "fraction_changed_within_type": 0.3834811316596137,
+      "share_of_all_changed_parameters": 0.5731351251340312
+    }
+  }
+}

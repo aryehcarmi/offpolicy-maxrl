@@ -1,0 +1,28 @@
+{
+  "manifest_sha256": "3d780f09fab82dadad85b7dc6d78a801499018757135fa12d716f0fb7ac1d902",
+  "score_sha256": {
+    "initial": "2954a535683e41a5f0680e46f0ee6d6579d77c86d7196143d0d165c048863d2c",
+    "current": "3607318af297505c2467b84c5107372a48868a1452cdcc006d61c2883b4dd57a",
+    "reference": "d3d9472282529581f6524ba3e6af67721c191ff13464331afcad6c22e2f2297f"
+  },
+  "target": "6965d3addf15437a842c5dfefc68e70a/step-000016",
+  "device": "cuda",
+  "dtype": "float32",
+  "hardware": {
+    "python": "3.12.3",
+    "platform": "Linux-4.19.0-gvisor-x86_64-with-glibc2.36",
+    "device": "cuda",
+    "gpu": "NVIDIA A10",
+    "cuda": "12.8",
+    "torch": "2.8.0+cu128",
+    "transformers": "4.57.1",
+    "numpy": "2.2.6",
+    "runtime": {
+      "device": "cuda",
+      "dtype": "float32",
+      "generation_batch": 1,
+      "score_batch": 1,
+      "hourly_usd": 1.3226
+    }
+  }
+}

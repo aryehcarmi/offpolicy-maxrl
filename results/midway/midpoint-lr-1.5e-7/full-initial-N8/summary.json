@@ -1,0 +1,454 @@
+{
+  "group_size": 8,
+  "source": "initial",
+  "batch_indices": {
+    "initial": [
+      0
+    ],
+    "reference": [
+      0,
+      8
+    ]
+  },
+  "manifest_sha256": "3d780f09fab82dadad85b7dc6d78a801499018757135fa12d716f0fb7ac1d902",
+  "metrics": {
+    "stale_batches": 1,
+    "reference_batches": 2,
+    "bootstrap_seed": 7001,
+    "bootstrap_repeats": 500,
+    "reference_split_half_cosine": {
+      "point_overflow": false,
+      "overflow_bootstrap_draws": 0,
+      "estimate": 0.03603400700235093,
+      "ci95": null,
+      "defined_bootstrap_draws": 0
+    },
+    "methods": {
+      "uncorrected": {
+        "cosine_of_mean": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 0.09711389265151374,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "raw_batch_mse": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 249837.51511079926,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "mean_batch_norm_over_reference_norm": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 1.2623960401418792,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "zero_batch_fraction": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 0.0,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "matched_batch_fraction": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 1.0,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "norm_matched_mse": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 247906.3704095869,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "mean_batch_norm_over_snis_norm_on_matched": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 1.0062292785607367,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "mean_split_half_cosine": {
+          "estimate": null,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "mean_direction_status": "unresolved"
+      },
+      "count": {
+        "cosine_of_mean": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 0.08404975924734642,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "raw_batch_mse": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 286439.71327585005,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "mean_batch_norm_over_reference_norm": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 1.3877265919803001,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "zero_batch_fraction": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 0.0,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "matched_batch_fraction": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 1.0,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "norm_matched_mse": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 251393.63865391663,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "mean_batch_norm_over_snis_norm_on_matched": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 1.1061276200858097,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "mean_split_half_cosine": {
+          "estimate": null,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "mean_direction_status": "unresolved"
+      },
+      "snis": {
+        "cosine_of_mean": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 0.11260994114302864,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "raw_batch_mse": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 243769.94006665924,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "mean_batch_norm_over_reference_norm": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 1.2545809062001767,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "zero_batch_fraction": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 0.0,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "matched_batch_fraction": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 1.0,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "norm_matched_mse": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 243769.94006665924,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "mean_batch_norm_over_snis_norm_on_matched": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 1.0,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "mean_split_half_cosine": {
+          "estimate": null,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "mean_direction_status": "unresolved"
+      },
+      "loo_cap": {
+        "cosine_of_mean": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 0.12762364203016027,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "raw_batch_mse": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 253934.73224260088,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "mean_batch_norm_over_reference_norm": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 1.3122133015284385,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "zero_batch_fraction": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 0.0,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "matched_batch_fraction": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 1.0,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "norm_matched_mse": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 239762.26495237587,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "mean_batch_norm_over_snis_norm_on_matched": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 1.0459375677116085,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "mean_split_half_cosine": {
+          "estimate": null,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "mean_direction_status": "unresolved"
+      },
+      "hybrid": {
+        "cosine_of_mean": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 0.1122101764879023,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "raw_batch_mse": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 250184.28779535106,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "mean_batch_norm_over_reference_norm": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 1.2802436231570111,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "zero_batch_fraction": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 0.0,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "matched_batch_fraction": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 1.0,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "norm_matched_mse": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 243876.65105497342,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "mean_batch_norm_over_snis_norm_on_matched": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 1.0204552108437235,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "mean_split_half_cosine": {
+          "estimate": null,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "mean_direction_status": "unresolved"
+      }
+    },
+    "paired_differences": {
+      "snis_minus_count": {
+        "cosine_of_mean": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 0.028560181895682213,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "raw_batch_mse": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": -42669.77320919081,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "norm_matched_mse": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": -7623.698587257386,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "matched_batches": 1
+      },
+      "loo_cap_minus_count": {
+        "cosine_of_mean": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 0.04357388278281385,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "raw_batch_mse": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": -32504.981033249176,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "norm_matched_mse": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": -11631.373701540753,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "matched_batches": 1
+      },
+      "loo_cap_minus_snis": {
+        "cosine_of_mean": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 0.015013700887131637,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "raw_batch_mse": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 10164.792175941635,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "norm_matched_mse": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": -4007.6751142833673,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "matched_batches": 1
+      },
+      "hybrid_minus_count": {
+        "cosine_of_mean": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 0.028160417240555874,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "raw_batch_mse": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": -36255.42548049899,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "norm_matched_mse": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": -7516.987598943204,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "matched_batches": 1
+      },
+      "hybrid_minus_snis": {
+        "cosine_of_mean": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": -0.00039976465512633896,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "raw_batch_mse": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 6414.3477286918205,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "norm_matched_mse": {
+          "point_overflow": false,
+          "overflow_bootstrap_draws": 0,
+          "estimate": 106.71098831418203,
+          "ci95": null,
+          "defined_bootstrap_draws": 0
+        },
+        "matched_batches": 1
+      }
+    },
+    "numerical_failures": {}
+  },
+  "hardware": {
+    "python": "3.12.3",
+    "platform": "Linux-4.19.0-gvisor-x86_64-with-glibc2.36",
+    "device": "cuda",
+    "gpu": "NVIDIA A10",
+    "cuda": "12.8",
+    "torch": "2.8.0+cu128",
+    "transformers": "4.57.1",
+    "numpy": "2.2.6",
+    "runtime": {
+      "device": "cuda",
+      "dtype": "float32",
+      "generation_batch": 1,
+      "score_batch": 1,
+      "hourly_usd": 1.3226
+    }
+  }
+}

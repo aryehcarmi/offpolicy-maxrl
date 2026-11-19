@@ -1,0 +1,4 @@
+phase,seconds,responses,generated_tokens,machine_usd,device,gpu,hourly_usd
+verify_training_update,295.235232604,0,0,0.10846614406723622,cuda,NVIDIA A10,1.3226
+setup_io_other,2.1272080190000224,0,0,0.0007815125905359528,cuda,NVIDIA A10,1.3226
+total,297.362440623,0,0,0.10924765665777217,cuda,NVIDIA A10,1.3226
