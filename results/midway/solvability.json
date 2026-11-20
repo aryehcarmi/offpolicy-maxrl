@@ -1,0 +1,63 @@
+{
+  "manifest_sha256": "abdb27fbeeefdae2c9f6cce441811af401e07937f9b6bd4693f8a5cabb556186",
+  "pilot_attempt": "pilot-20261118T190958601132Z-b80c6ef23f1c",
+  "pilot_run_id": "f8612d7937024ec7839671e9f069a568",
+  "groups": {
+    "validation": {
+      "checked": 128,
+      "solvable": 128,
+      "verifier_accepted": 128,
+      "unsolvable": []
+    },
+    "discovery": {
+      "checked": 32,
+      "solvable": 32,
+      "verifier_accepted": 32,
+      "unsolvable": []
+    },
+    "confirmation": {
+      "checked": 32,
+      "solvable": 32,
+      "verifier_accepted": 32,
+      "unsolvable": []
+    },
+    "test": {
+      "checked": 256,
+      "solvable": 256,
+      "verifier_accepted": 256,
+      "unsolvable": []
+    },
+    "pilot_training": {
+      "checked": 512,
+      "solvable": 512,
+      "verifier_accepted": 512,
+      "unsolvable": [],
+      "distinct_puzzles": 511,
+      "repeated_puzzles": {
+        "24-26-81-98=19": [
+          1,
+          12
+        ]
+      },
+      "prompts_per_batch": 32,
+      "solvable_by_step": {
+        "1": 32,
+        "2": 32,
+        "3": 32,
+        "4": 32,
+        "5": 32,
+        "6": 32,
+        "7": 32,
+        "8": 32,
+        "9": 32,
+        "10": 32,
+        "11": 32,
+        "12": 32,
+        "13": 32,
+        "14": 32,
+        "15": 32,
+        "16": 32
+      }
+    }
+  }
+}

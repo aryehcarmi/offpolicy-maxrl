@@ -22,6 +22,7 @@ On eight midpoint puzzles, SNIS had lower raw gradient error than Count in the f
 | [pilot-lr-1.5e-7/](pilot-lr-1.5e-7/) | Drew fresh validation responses from the selected Count checkpoint | used in the report | 90/1,024 correct responses and 43/128 puzzles solved | $0.4732 |
 | [midpoint-lr-1.5e-7/](midpoint-lr-1.5e-7/) | Compared gradient estimates with a fresh reference on eight puzzles | used in the report | SNIS minus Count in raw final-layer mean squared error was −0.106 (95% interval −0.191 to −0.037) | $0.9512 |
 | [Li et al. initial evaluation](li-initial-20261120T205147052161Z-b29ad6c4d540.json) | Authors’ held-out evaluator on the untrained model | Job 1 complete | 42/512 correct (8.203125%), published 8.2% | $0.2883 |
+| [Countdown solvability check](solvability.json) | Exhaustive search on frozen panels and saved pilot prompts | verified locally | The verifier accepted a solution for all 448 panel puzzles and all 512 pilot prompt appearances | $0 cloud |
 
 The eight controlled GPU runs cost an estimated **$6.61** in total, including GPU, CPU and memory. The replay workers reported an A10G and the other six reported an A10. The initial evaluation's worker time and cost are in the research log. The other seven are in each run's `attempt.json`. Component timings in `resources.csv` cover the individual operations. [Research log](../../docs/research-log.md) · [Time and cost by run](report-numbers.md#gpu-time-and-estimated-cost)
 
@@ -49,6 +50,21 @@ On the authors’ 64 held-out four-number puzzles, 42 of 512 responses were corr
 The authors’ evaluator took 97.50 seconds. The NVIDIA H100 80 GB worker ran for 226.41 seconds, including setup and teardown. After the evaluator saved all 512 results, Python waited at exit for its idle vLLM engine. We sent the engine a shutdown signal, and the launcher exited successfully and verified the downloaded log. The CPU preflight took 51.05 seconds. Based on the workspace rates for an H100 ($3.95/hour), eight CPU cores ($0.0473/core-hour) and 32 GiB ($0.008/GiB-hour), estimated worker costs were $0.2883 for the GPU run and $0.0090 for preflight, or $0.2973 together. These figures cover worker time only.
 
 At 3:55 p.m. EST on November 20, 2026, Modal showed both Job 1 apps stopped with zero running containers. The review ZIP includes the preflight and evaluation records and logs in `runs/replication/`, with the evaluator’s output in `20261120T205147052161Z-b29ad6c4d540/initial/evaluation.json` under that directory. [CPU preflight](https://modal.com/apps/acarmi/main/ap-pmNv5ABbEP9lZfUi57UDjK) · [GPU evaluation](https://modal.com/apps/acarmi/main/ap-Bdxw05Z8d7RgyzJzn31Atl)
+
+## Countdown solvability check
+
+The search found solutions for 128/128 validation, 32/32 discovery, 32/32 confirmation and 256/256 test puzzles. All 16 saved pilot batches were 32/32. Puzzle `24-26-81-98=19` appeared in batches 1 and 12, so the 512 training slots contained 511 distinct puzzles. The verifier accepted every solution. [Counts by group and batch](solvability.json)
+
+The search tries every ordered pair of remaining operands and every binary operation, using exact fractions and skipping division by zero. Each combination consumes its operands. This covers every parenthesization because every binary expression tree can be evaluated by successively combining siblings. The check accepts a solution only after using all operands and passing the resulting expression to the project's verifier.
+
+To reproduce from the repository root, point `COUNTDOWN_VOLUME` at a local copy or mount of the `countdown-maxrl` volume. The command reads the frozen manifest, the four panel shards, the training shard, and the 16 original `train-*.jsonl` response shards. It checks the inputs against the manifest and the saved pilot hashes and prints the result as JSON. [Pilot provenance](pilot-lr-0.001/attempt.json)
+
+```bash
+PILOT_ATTEMPT=pilot-20261118T190958601132Z-b80c6ef23f1c
+python -m maxrl.audit_solvability \
+  --manifest "$COUNTDOWN_VOLUME/data/manifest.json" \
+  --responses "$COUNTDOWN_VOLUME/$PILOT_ATTEMPT/output/responses"
+```
 
 ## Adding results
 
