@@ -15,21 +15,26 @@ from .prompts import prompt_metadata, validate_prompt
 
 METHODS = ("count", "snis", "fresh", "uncorrected")
 SEEDS = {method: list(range(101, 106 if method in ("count", "snis") else 104)) for method in METHODS}
-SCREEN = (1e-4, 1e-3, 1e-2)
-STEPS = {"screen": (16,), "tune": (64, 80, 96)}
+SCREEN = (3e-7, 1e-6, 3e-6)
+REPLAY_RATE = 1.5e-7
+GAIN_MARGIN = 0.02
+STEPS = {"screen": (16, 32), "tune": (64, 80, 96)}
 PRIMARY = "final test pass@1, SNIS minus Count within each matched training seed"
 
 
 def trials(stage, eta0=None):
     methods = ["fresh"] if stage == "screen" else METHODS
     rates = SCREEN if stage == "screen" else (eta0 / 3, eta0, 3 * eta0)
+    if stage == "tune" and eta0 >= 1e-6:
+        rates = (REPLAY_RATE, *rates)
     for method in methods:
         for index, rate in enumerate(rates):
             yield method, rate, Path(stage) / f"{method}-{index}"
 
 
-def read_trial(directory, expected_config, manifest_hash, steps, expected_runtime):
-    """A numerical failure counts as a completed trial. Other failures need resolution."""
+def read_trial(directory, expected_config, manifest_hash, stage, expected_runtime):
+    steps = STEPS[stage]
+    required_steps = (0, *steps) if stage == "screen" else steps
     result = {"method": expected_config.method, "lr": expected_config.lr,
               "directory": str(directory), "validation": {}}
     if not (directory / "run.json").is_file():
@@ -45,7 +50,7 @@ def read_trial(directory, expected_config, manifest_hash, steps, expected_runtim
         if metrics.is_file():
             for line in metrics.read_text().splitlines():
                 event = json.loads(line)
-                if event["split"] == "validation" and event["step"] in steps:
+                if event["split"] == "validation" and event["step"] in required_steps:
                     step, score = str(event["step"]), event["pass@1"]
                     if (step in result["validation"] or type(score) not in (int, float)
                             or not 0 <= score <= 1 or event["prompts"] != 128
@@ -55,32 +60,63 @@ def read_trial(directory, expected_config, manifest_hash, steps, expected_runtim
         if (directory / "failure.json").is_file():
             failure = json.loads((directory / "failure.json").read_text())
             status = "numerical_failure" if failure.get("category") == "numerical" else "other_failure"
+            if status == "numerical_failure" and stage == "screen" and "0" not in result["validation"]:
+                status = "incomplete"
             return dict(result, status=status, failure=failure)
     except (KeyError, ValueError, TypeError, AttributeError) as error:
         return dict(result, status="invalid", reason=str(error))
-    if set(result["validation"]) != set(map(str, steps)):
+    validation = result["validation"]
+    if set(validation) != set(map(str, required_steps)):
         return dict(result, status="incomplete")
-    return dict(result, status="valid", score=mean(result["validation"].values()))
+    status = "collapsed" if validation[str(steps[-1])] == 0 else "valid"
+    return dict(result, status=status, score=mean(validation[str(step)] for step in steps))
 
 
-def select(stage, args, manifest_hash, eta0=None):
+def read_trials(stage, args, manifest_hash, eta0=None):
     records = []
     runtime = numerical_runtime(asdict(Runtime.from_args(args)))
     for method, rate, directory in trials(stage, eta0):
         cfg = load_config(args.configs / f"{stage}.json", method=method, lr=rate)
-        records.append(read_trial(args.root / directory, cfg, manifest_hash, STEPS[stage], runtime))
-    if any(row["status"] not in ("valid", "numerical_failure") for row in records):
+        records.append(read_trial(args.root / directory, cfg, manifest_hash, stage, runtime))
+    if any(row["status"] not in ("valid", "collapsed", "numerical_failure") for row in records):
         raise ValueError(f"{stage} has missing, incomplete or invalid trials, or an operational failure.\n"
                          + json.dumps(records, indent=2))
+    return records
+
+
+def best_trial(records, method):
+    valid = (row for row in records if row["method"] == method and row["status"] == "valid")
+    return max(valid, key=lambda row: (row["score"], -row["lr"]), default=None)
+
+
+def select_screen(args, manifest_hash):
+    records = read_trials("screen", args, manifest_hash)
+    best = best_trial(records, "fresh")
+    if best is None:
+        eta0, gain = REPLAY_RATE, None
+        print(f"Fresh screen has no selectable trial. Using replay fallback eta0={eta0:g}.", file=sys.stderr)
+    else:
+        eta0 = best["lr"]
+        gain = best["score"] - best["validation"]["0"]
+        if gain < GAIN_MARGIN:
+            print(f"Fresh screen gain {gain:.2%} is below the {GAIN_MARGIN:.0%} margin. "
+                  f"Proceeding with eta0={eta0:g}.", file=sys.stderr)
+    outcome = {"gain": gain, "margin": GAIN_MARGIN, "met_margin": gain is not None and gain >= GAIN_MARGIN,
+               "fallback_used": best is None}
+    return records, eta0, outcome
+
+
+def select_tuning(args, manifest_hash, eta0):
+    records = read_trials("tune", args, manifest_hash, eta0)
     selected = {}
-    for method in dict.fromkeys(row["method"] for row in records):
-        stable = [row for row in records if row["method"] == method and row["status"] == "valid"]
-        if not stable:
+    for method in METHODS:
+        best = best_trial(records, method)
+        if best is None:
             action = ("Inspect the failure and decide on the shared smaller-rate extension before any cap."
                       if method in ("count", "snis") else "Inspect the failures before proceeding.")
-            raise ValueError(f"Every {method} trial had a numerical failure. {action}\n"
+            raise ValueError(f"Every {method} trial collapsed or failed numerically. {action}\n"
                              + json.dumps(records, indent=2))
-        selected[method] = max(stable, key=lambda row: (row["score"], -row["lr"]))["lr"]
+        selected[method] = best["lr"]
     return records, selected
 
 
@@ -121,8 +157,7 @@ def run(args):
         cfg = load_config(args.configs / f"{stage}.json")
         eta0 = None
         if stage == "tune":
-            _, selected = select("screen", args, digest(args.manifest))
-            eta0 = selected["fresh"]
+            _, eta0, _ = select_screen(args, digest(args.manifest))
         for method, rate, directory in trials(stage, eta0):
             print(command(args, stage, method, rate, cfg.seed, args.root / directory))
         return
@@ -131,11 +166,11 @@ def run(args):
     main_config = asdict(load_config(args.configs / "main.json"))
     path = args.root / "frozen.json"
     if stage == "freeze":
-        screen, coarse = select("screen", args, manifest_hash)
-        tune, rates = select("tune", args, manifest_hash, coarse["fresh"])
+        screen, eta0, outcome = select_screen(args, manifest_hash)
+        tune, rates = select_tuning(args, manifest_hash, eta0)
         record = {"version": 3, "prompt": prompt_metadata(),
                   "primary_contrast": PRIMARY, "manifest_sha256": manifest_hash,
-                  "screen": screen, "eta0": coarse["fresh"], "tune": tune, "rates": rates,
+                  "screen": screen, "eta0": eta0, "screen_outcome": outcome, "tune": tune, "rates": rates,
                   "main_seeds": SEEDS, "main_config": main_config,
                   "runtime": numerical_runtime(asdict(Runtime.from_args(args)))}
         if path.exists():

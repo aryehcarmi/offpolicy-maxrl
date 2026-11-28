@@ -156,7 +156,7 @@ def test_trajectory_evaluation_and_sampler_refresh(tiny, tmp_path, monkeypatch):
 
 def test_presets_and_invalid_settings(tmp_path):
     configs = Path(__file__).resolve().parents[1] / "configs"
-    for stage, updates in [("pilot", 16), ("screen", 16), ("tune", 96), ("main", 128)]:
+    for stage, updates in [("pilot", 16), ("screen", 32), ("tune", 96), ("main", 128)]:
         cfg = load_config(configs / f"{stage}.json")
         assert cfg.updates == updates
         assert (cfg.prompts_per_step, cfg.responses_per_prompt, cfg.max_new_tokens) == (32, 8, 377)

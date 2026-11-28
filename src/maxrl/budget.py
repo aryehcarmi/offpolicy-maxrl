@@ -8,9 +8,9 @@ from pathlib import Path
 from .config import load_config
 
 
-def workload(configs: Path, reduced_controls: bool = False):
+def workload(configs: Path, reduced_controls: bool = False, tune_trials: int = 12):
     rows = []
-    for name, runs in (("pilot", 1), ("screen", 3), ("tune", 12), ("main", 13 if reduced_controls else 16)):
+    for name, runs in (("pilot", 1), ("screen", 3), ("tune", tune_trials), ("main", 13 if reduced_controls else 16)):
         cfg = load_config(configs / f"{name}.json")
         # The trainer evaluates at step 0, every eval_every steps, and at the last step.
         evaluations = 1 + math.ceil(cfg.updates / cfg.eval_every)
@@ -67,13 +67,15 @@ def projection(plan, pilot, hourly_usd, diagnostic_usd, replication_usd):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--configs", type=Path, default=Path("configs"))
+    parser.add_argument("--tune-trials", type=int, choices=(12, 16), default=12,
+                        help="number of tuning runs to budget (default: 12)")
     parser.add_argument("--reduced-controls", action="store_true", help="budget scenario with two Fresh and one Uncorrected run")
     parser.add_argument("--pilot", type=Path)
     parser.add_argument("--hourly-usd", type=float)
     parser.add_argument("--diagnostic-usd", type=float, help="estimated all-in cost of all three diagnostic panels")
     parser.add_argument("--replication-usd", type=float, help="estimated cost of six upstream runs and seven evaluations")
     args = parser.parse_args()
-    plan = workload(args.configs, args.reduced_controls)
+    plan = workload(args.configs, args.reduced_controls, args.tune_trials)
     if args.pilot:
         plan["projection"] = projection(plan, args.pilot, args.hourly_usd, args.diagnostic_usd, args.replication_usd)
     print(json.dumps(plan, indent=2, allow_nan=False))

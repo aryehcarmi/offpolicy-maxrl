@@ -11,9 +11,13 @@ python -m maxrl.matrix main
 python -m maxrl.matrix test
 ```
 
-The Fresh screen uses seed 17 and chooses the best step-16 validation pass@1 across learning rates 0.0001, 0.001 and 0.01. All four methods then run for 96 updates over the common grid of one third, one, and three times the selected rate. Their scores are mean validation pass@1 at steps 64, 80 and 96. Ties select the smaller learning rate in both stages.
+The Fresh screen runs 32 updates at each of `3e-7`, `1e-6` and `3e-6` with seed 17. Each trial needs validation pass@1 at steps 0, 16 and 32. Its score is the mean at steps 16 and 32. In either stage, a completed trial with exactly zero pass@1 at the last scored step (32 for screen, 96 for tuning) is marked `collapsed` and excluded from selection. Numerical failures are also excluded. Ties between selectable trials go to the smaller rate.
 
-`freeze` validates the recorded configurations, manifest fingerprint, panel size, validation steps and failure records. It writes the full grid, selected rates, matched seeds, main configuration and primary contrast to `runs/matrix/frozen.json`. A poor finite score is a valid trial. Missing metrics and operational failures require completion or a documented rerun. Keep failed attempts in a separate directory before rerunning a job at its original path. Numerical failures remain in the frozen record. The trainer has no automatic resume option; an interrupted trajectory remains partial. In `failure.json`, `target_step` is the loop step before that iteration's update: a failure during `training_update` at `target_step: 0` means update 1 was attempted. Use `phase` and `last_saved_checkpoint_step` to identify the failure and the available checkpoint.
+Use the best selectable screen rate as `eta0`. Its gain is its score minus its own step-0 pass@1. The margin is 0.02 (two percentage points), about twice the estimated sampling noise of 1.1 points at 8% pass@1 with 1,024 responses per evaluation. If the gain falls below the margin, tuning proceeds at the selected rate. If all three trials collapsed or failed numerically, tuning proceeds from the replay rate `eta0 = 1.5e-7`. A below-margin gain or fallback triggers a one-line notice on stderr. For `tune`, stdout contains one job command per line.
+
+All four methods tune for 96 updates at `eta0/3`, `eta0` and `3*eta0` (12 trials). When `eta0 >= 1e-6`, each method also tunes at `1.5e-7` (16 trials). Trial directory indices start at zero in ascending rate order within each method. The tuning score is mean validation pass@1 at steps 64, 80 and 96.
+
+`freeze` validates the recorded configurations, manifest fingerprint, panel size, validation steps and failure records. It writes the full grid, selected rates, matched seeds, main configuration and primary contrast to `runs/matrix/frozen.json`, including the records of collapsed and numerically failed trials. Its `screen_outcome` records `gain`, `margin`, `met_margin` and `fallback_used`. If the fallback was used, the gain is null and `met_margin` is false. A selected gain at or above the margin sets `met_margin` to true. Missing, incomplete, invalid or operationally failed trials stop the planner. Complete or correct those trials before continuing. Keep failed attempts in a separate directory before rerunning a job at its original path. The trainer has no automatic resume option; an interrupted trajectory remains partial. In `failure.json`, `target_step` is the loop step before that iteration's update: a failure during `training_update` at `target_step: 0` means update 1 was attempted. Use `phase` and `last_saved_checkpoint_step` to identify the failure and the available checkpoint.
 
 `main` emits 128-update commands for Count and SNIS on seeds 101–105, and Fresh and Uncorrected on seeds 101–103. The first two Fresh trajectories supply discovery and confirmation. `test` independently emits the 256-puzzle, 16-response evaluation of each final checkpoint using the same seed as its trajectory. Review any failed main run before dispatching its evaluation. The planner checks the frozen protocol and manifest before emitting test commands and never reads test response files.
 
@@ -27,7 +31,7 @@ Missing runtime or prompt metadata is an error. Prompt wording and chat-template
 
 ## Numerical failures and optional methods
 
-The default comparison uses uncapped Count and SNIS. If either primary method fails numerically across the full tuning grid, check the implementation and use one shared smaller-rate extension. Persistent failure permits a separate comparison using the same raw-weight cap for both methods, with comparable retuning and the original failures retained. Poor validation accuracy or a large gradient-norm ratio alone does not trigger clipping. The command planner implements the uncapped design; any capped comparison must be documented separately.
+The default comparison uses uncapped Count and SNIS. Tuning stops if any method has only collapsed or numerically failed trials. If this occurs for Count or SNIS, check the implementation and use one shared smaller-rate extension. Persistent failure permits a separate comparison using the same raw-weight cap for both methods, with comparable retuning and the original failures retained. Poor validation accuracy or a large gradient-norm ratio alone does not trigger clipping. The command planner implements the uncapped design; any capped comparison must be documented separately.
 
 At most one of `loo_cap` and `hybrid` can enter further training. Record the prediction from discovery before collecting confirmation results. The candidate must show a mean-direction advantage over both Count and SNIS on the confirmation panel, supported by paired uncertainty and a full-model gradient check. Report the accompanying noise tradeoff. It must also achieve a better stable validation tuning score than both primary methods. Prefer `hybrid` if discovery does not separate the candidates. Five additional training seeds require spare budget after the core experiments are funded.
 
@@ -45,10 +49,11 @@ Under the normal-difference assumption, five independent seed pairs give 80% pow
 
 ## Budget
 
-The default plan schedules **1,353,216 responses**, including the pilot and both full diagnostic panels. The separate initial controlled evaluation adds 1,024 responses; it is outside the default matrix count.
+With 12 tuning trials the full plan schedules **1,368,576 responses**, including the pilot and both full diagnostic panels. With 16 tuning trials it schedules **1,495,552 responses**. The separate initial controlled evaluation adds 1,024 responses to either total.
 
 ```sh
 python -m maxrl.budget
+python -m maxrl.budget --tune-trials 16
 python -m maxrl.budget --pilot runs/pilot
 ```
 
@@ -67,7 +72,7 @@ This scenario retains all five Count/SNIS pairs, two Fresh trajectories for disc
 
 Use local storage for checkpoints, response files and gradient scratch. Response publication uses hard links to avoid overwriting an existing shard; some cloud-drive and network mounts do not support them. Copy completed files to shared storage after the process exits.
 
-The controlled configurations save 65 model checkpoints across the pilot, screen, tuning and main runs. At roughly 2.4 GB per FP32 checkpoint, allow about 160 GB, plus model downloads, response files, data and replication outputs. The upstream replication saves extra training state and is not included in that estimate.
+Completed controlled runs save 2 pilot checkpoints, 6 screen checkpoints (steps 16 and 32 for each rate), 12 or 16 tuning checkpoints and 48 main checkpoints. That totals 68 or 72 checkpoints. At roughly 2.4 GB per FP32 checkpoint, the two plans need about 163 GB or 173 GB for checkpoint files, plus space for model downloads, response files, data and replication outputs. The upstream replication saves extra training state and is not included in that estimate.
 
 A full-model diagnostic holds seven temporary FP32 gradient vectors at midpoint and 56 for a larger panel: approximately 17 GB or 135 GB for 0.6B parameters. Point `full --scratch` to a local volume with enough free space. Temporary vectors are removed on normal exit and ordinary Python exceptions; forced termination can leave files behind. See the diagnostic guide for the command.
 

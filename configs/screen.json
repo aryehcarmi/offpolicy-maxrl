@@ -4,7 +4,7 @@
   "method": "fresh",
   "seed": 17,
   "lr": null,
-  "updates": 16,
+  "updates": 32,
   "prompts_per_step": 32,
   "responses_per_prompt": 8,
   "refresh_every": 64,
@@ -12,5 +12,5 @@
   "validation_samples": 8,
   "test_samples": 16,
   "max_new_tokens": 377,
-  "checkpoint_steps": []
+  "checkpoint_steps": [16]
 }
