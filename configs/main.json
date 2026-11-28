@@ -14,6 +14,8 @@
   "max_new_tokens": 377,
   "checkpoint_steps": [
     48,
+    60,
+    63,
     64
   ]
 }

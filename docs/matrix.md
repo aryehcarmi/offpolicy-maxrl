@@ -137,7 +137,7 @@ This scenario retains all five Count/SNIS pairs, two Fresh trajectories for disc
 
 Use local storage for checkpoints, response files and gradient scratch. Response publication uses hard links to avoid overwriting an existing shard; some cloud-drive and network mounts do not support them. Copy completed files to shared storage after the process exits.
 
-Completed controlled runs save 2 pilot checkpoints, 6 screen checkpoints (steps 16 and 32 for each rate), 12 or 16 tuning checkpoints and 48 main checkpoints. That totals 68 or 72 checkpoints. At roughly 2.4 GB per FP32 checkpoint, the two plans need about 163 GB or 173 GB for checkpoint files, plus space for model downloads, response files, data and replication outputs. The upstream replication saves extra training state and is not included in that estimate.
+Completed controlled runs save 2 pilot checkpoints, 6 screen checkpoints (steps 16 and 32 for each rate), 12 or 16 tuning checkpoints and 80 main checkpoints. That totals 100 or 104 checkpoints. At roughly 2.4 GB per FP32 checkpoint, the two plans need about 240 GB or 250 GB for checkpoint files, plus space for model downloads, response files, data and replication outputs. The upstream replication saves extra training state and is not included in that estimate.
 
 A full-model diagnostic holds seven temporary FP32 gradient vectors at midpoint and 56 for a larger panel: approximately 17 GB or 135 GB for 0.6B parameters. Point `full --scratch` to a local volume with enough free space. Temporary vectors are removed on normal exit and ordinary Python exceptions; forced termination can leave files behind. See the diagnostic guide for the command.
 
