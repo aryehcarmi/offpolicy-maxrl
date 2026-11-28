@@ -83,6 +83,23 @@ The worker writes experiment output to local disk for hard-link support, copies 
 
 To retrieve a finished attempt after a disconnect, find its ID with `modal volume ls countdown-maxrl /`, then use `modal run scripts/modal_countdown.py --recover-attempt <attempt-id>`. This retrieves the small files without launching another worker. For a later midpoint run, use `--stage midpoint --pilot-attempt <completed-pilot-attempt-id>`. The worker checks that its GPU type matches the pilot's before collecting any responses.
 
+For the full matrix, run these commands in order from the reviewed commit. Allow each stage to finish before launching the next.
+
+```sh
+modal run --detach scripts/modal_countdown.py --stage matrix --matrix-stage screen
+modal run --detach scripts/modal_countdown.py --stage matrix --matrix-stage tune
+modal run --detach scripts/modal_countdown.py --stage matrix --matrix-stage main
+modal run --detach scripts/modal_countdown.py --stage matrix --matrix-stage test
+modal run scripts/modal_countdown.py --stage matrix --matrix-stage collect
+python -m maxrl.compare --root runs/matrix > runs/matrix/primary-result.json
+```
+
+Each launch runs one CPU preflight, checks the local copy of the Volume data, collects finished trials, and asks the local planner for its commands. The screen starts three Fresh trials. Tuning starts 12 or 16 trials based on the screen. Main freezes the selected rates and starts 16 training runs. Test evaluates each available final checkpoint and reports any missing main run. The coordinator submits up to 16 A10 trials concurrently and waits for their attempts to be saved. Once the coordinator reports the first dispatch, the laptop can disconnect. [Detached local entrypoints in Modal 1.6.4](https://github.com/modal-labs/modal-client/blob/cf154c11126e5f184c5a1a11d8c3604887247674/py/modal/cli/run.py#L363-L367)
+
+The latest attempt sets the trial state. **Done** requires a finished record, `output/run.json`, and either completion or a numerical failure. **Running** means its recorded Modal call is still in progress. **Failed** covers all other attempts, including interrupted workers. Relaunching the stage skips done and running trials and retries failed trials. Add `--rerun tune/count-0` to the tune launch to force just that trial. Add `--dry-run` to a launch to verify data, collect results, prepare any main freeze and preview the dispatch without allocating workers.
+
+Use `collect` after a disconnect. It prints the state, attempt ID, UTC times and estimated worker cost, verifies the downloaded files against their SHA-256 inventory, and publishes the planner and comparison inputs under `runs/matrix/`. Per-attempt logs and small artifacts go under `runs/countdown/`. Checkpoints stay on the Volume. [Matrix stages and recovery](docs/matrix.md#run-the-matrix-on-modal)
+
 ### Replay the pilot's first update
 
 The [pilot at SGD rate 0.001](results/midway/pilot-lr-0.001/report.md) lost all validation successes. To measure the effect of the first update, replay its two saved training batches on the A10.

@@ -1,10 +1,11 @@
-"""Run the controlled Countdown evaluation, pilot, replay or midpoint protocol on Modal."""
+"""Run controlled Countdown experiments and planner stages on Modal."""
 from collections import defaultdict
 from contextlib import contextmanager
 import csv
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 import hashlib
+import io
 import json
 import math
 import os
@@ -21,7 +22,9 @@ from uuid import uuid4
 
 MANIFEST_SHA256 = "abdb27fbeeefdae2c9f6cce441811af401e07937f9b6bd4693f8a5cabb556186"
 PILOT_DEPENDENT = ("replay", "midpoint", "saved-verify", "saved-train", "saved-validation")
-STAGES = ("preflight", "initial-eval", "pilot", *PILOT_DEPENDENT)
+STAGES = ("preflight", "initial-eval", "pilot", *PILOT_DEPENDENT, "matrix")
+MATRIX_STAGES = ("screen", "tune", "main", "test")
+MATRIX_FREEZE = Path("matrix/frozen.json")
 TEST_SDK = "/opt/countdown-test-sdk"
 PILOT_INPUTS = ("run.json", "metrics.jsonl", "resources.csv")
 BUDGET_CONFIGS = ("pilot.json", "screen.json", "tune.json", "main.json")
@@ -176,6 +179,9 @@ def _run(argv, repo, emit, *, offline=False):
     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
     # Modal injects a vendored SDK into the worker. Keep it out of the frozen interpreter.
     env.pop("PYTHONPATH", None)
+    # Planner commands use the literal executable "python". Resolve it inside the locked venv.
+    if argv[0] == "python":
+        env["PATH"] = os.pathsep.join([str(repo / ".venv/bin"), env.get("PATH", "")])
     if offline:
         env.update(HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1")
     with subprocess.Popen(argv, cwd=repo, env=env, stdout=subprocess.PIPE,
@@ -361,19 +367,133 @@ def git_provenance(repo):
     return {"git_commit": commit, "git_dirty": any(not line.startswith("# ") for line in status)}
 
 
+def parse_matrix_command(matrix_stage, command):
+    """Identify one direct planner invocation before any job is dispatched."""
+    argv = shlex.split(command)
+    test = matrix_stage == "test"
+    module = "maxrl.evaluate" if test else "maxrl.train"
+    if matrix_stage not in MATRIX_STAGES or argv[:3] != ["python", "-m", module]:
+        raise ValueError(f"Expected python -m {module} for {matrix_stage}: {command}")
+    keys, values = argv[3::2], argv[4::2]
+    required = {"--config", "--manifest", "--out", "--method", "--lr", "--seed"}
+    if test:
+        required.update(("--panel", "--checkpoint"))
+    allowed = required | {"--device", "--dtype", "--generation-batch", "--score-batch", "--hourly-usd"}
+    if (len(keys) != len(values) or len(keys) != len(set(keys))
+            or not required <= set(keys) <= allowed or any(v.startswith("--") for v in values)):
+        raise ValueError(f"Invalid {matrix_stage} planner arguments: {command}")
+    flags = dict(zip(keys, values))
+    out = Path(flags["--out"])
+    trial = out.relative_to("runs/matrix")
+    stage = "main" if test else matrix_stage
+    if (len(trial.parts) != (3 if test else 2) or trial.parts[0] != stage
+            or ".." in trial.parts or (test and trial.name != "test")):
+        raise ValueError(f"Invalid {matrix_stage} trial output path: {out}")
+    if test and (flags["--panel"] != "test" or Path(flags["--checkpoint"]).parent != out.parent / "checkpoints"):
+        raise ValueError(f"Expected --panel test and the main trial's checkpoint: {command}")
+    rate, seed = float(flags["--lr"]), int(flags["--seed"])
+    if not math.isfinite(rate) or rate <= 0 or seed < 0:
+        raise ValueError(f"Invalid rate or seed in planner command: {command}")
+    return {"matrix_stage": matrix_stage, "trial": str(trial), "method": flags["--method"],
+            "rate": rate, "seed": seed, "planner_command": command}
+
+
+def _matrix_checkpoint(volume_root, job, main_attempt, freeze_sha256):
+    folder, source = _attempt_input(volume_root, main_attempt, {"matrix"}, GPU, "test")
+    _check_source_record(folder, source)
+    if (source["matrix_stage"] != "main" or source["trial"] != str(Path(job["trial"]).parent)
+            or source["freeze_sha256"] != freeze_sha256
+            or any(source[k] != job[k] for k in ("method", "rate", "seed"))):
+        raise ValueError("Main checkpoint source does not match this test trial and rate freeze")
+    _check_files(folder, source, ["run.json"])
+    run = json.loads((folder / "output/run.json").read_text())
+    step = f"step-{run['config']['updates']:06d}"
+    argv = shlex.split(job["planner_command"])
+    if Path(argv[argv.index("--checkpoint") + 1]).name != step:
+        raise ValueError(f"Expected the main trial's final checkpoint {step}")
+    identity = f"{run['run_id']}/{step}"
+    if identity not in source["verified_checkpoints"]:
+        raise ValueError(f"Main attempt did not verify {identity}")
+    checkpoint = folder / "output/checkpoints" / step
+    prefix = f"output/checkpoints/{step}/"
+    inventory = {key for key in source["sha256"] if key.startswith(prefix)}
+    files = {str(path.relative_to(folder)) for path in checkpoint.rglob("*") if path.is_file()}
+    if not files or files != inventory:
+        raise ValueError(f"Checkpoint files differ from the SHA-256 inventory for {identity}")
+    _check_files(folder, source, [key.removeprefix("output/") for key in sorted(files)])
+    return checkpoint
+
+
+def _matrix_argv(job, volume_root, output, hourly_usd, freeze_sha256, main_attempt):
+    argv = shlex.split(job["planner_command"])
+    replacements = {"--out": output, "--manifest": volume_root / "data/manifest.json"}
+    if job["matrix_stage"] in ("main", "test") and _digest(volume_root / MATRIX_FREEZE) != freeze_sha256:
+        raise ValueError("Volume rate freeze SHA-256 differs from this launch")
+    if job["matrix_stage"] == "test":
+        replacements["--checkpoint"] = _matrix_checkpoint(volume_root, job, main_attempt, freeze_sha256)
+    if "--hourly-usd" in argv:
+        replacements["--hourly-usd"] = hourly_usd
+    else:
+        argv.extend(["--hourly-usd", str(hourly_usd)])
+    for flag, value in replacements.items():
+        argv[argv.index(flag) + 1] = str(value)
+    return argv
+
+
+def new_attempt_id(stage):
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    return f"{stage}-{stamp}-{uuid4().hex[:12]}"
+
+
+def _validate_matrix_attempt_id(name):
+    if not isinstance(name, str) or not name.startswith("matrix-") or not all(
+            c.isascii() and (c.isalnum() or c == "-") for c in name):
+        raise ValueError(f"Invalid preallocated matrix attempt ID: {name!r}")
+
+
+def _claim_matrix_worker(volume, attempt_id, function_call_id):
+    """Pin the first GPU call to an attempt, even if a coordinator repeats an ambiguous spawn."""
+    _validate_matrix_attempt_id(attempt_id)
+    if not function_call_id:
+        raise ValueError("A matrix worker requires its Modal function call ID")
+    key = f"{attempt_id}/worker.json"
+    try:
+        with volume.batch_upload() as batch:
+            data = json.dumps({"function_call_id": function_call_id}).encode()
+            batch.put_file(io.BytesIO(data), key)
+    except FileExistsError:
+        return json.loads(b"".join(volume.read_file(key)))["function_call_id"]
+    return function_call_id
+
+
 def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str, provenance: dict,
                 rates: dict | None = None, pilot_attempt: str | None = None, grid: str = "original",
-                verification_attempt=None, initial_attempt=None) -> dict:
+                verification_attempt=None, initial_attempt=None, matrix_stage=None, planner_command=None,
+                function_call_id=None, freeze_sha256=None, main_attempt=None, attempt_id=None) -> dict:
     """Keep writable experiment files on local disk and preserve one Volume folder per invocation."""
     if stage not in STAGES or (stage not in PILOT_DEPENDENT and pilot_attempt is not None):
         raise ValueError(f"Invalid stage or pilot input for {stage!r}")
     _check_grid(stage, grid)
     repo, volume_root = Path(repo).resolve(), Path(volume_root).resolve()
+    job = parse_matrix_command(matrix_stage, planner_command) if stage == "matrix" else None
+    if job is not None and not function_call_id:
+        raise ValueError("A matrix attempt requires its Modal function call ID")
     started = _utc()
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    attempt_id = f"{stage}-{stamp}-{uuid4().hex[:12]}"
+    dispatched = attempt_id is not None
+    if dispatched:
+        if stage != "matrix":
+            raise ValueError("Only matrix trials use preallocated attempt IDs")
+        _validate_matrix_attempt_id(attempt_id)
+    attempt_id = attempt_id or new_attempt_id(stage)
     attempt = volume_root / attempt_id
-    attempt.mkdir(parents=True, exist_ok=False)
+    attempt.mkdir(parents=True, exist_ok=dispatched)
+    record_path = attempt / "attempt.json"
+    if dispatched and record_path.exists():
+        # A preempted input can be delivered again. Leave its artifacts intact for collection/retry.
+        previous = json.loads(record_path.read_text())
+        if previous["function_call_id"] == function_call_id and previous["status"] != "running":
+            return previous
+        raise FileExistsError(f"Matrix worker already started attempt {attempt_id}")
     record = {"attempt_id": attempt_id, "stage": stage, "pilot_attempt": pilot_attempt,
               "git_commit": provenance["git_commit"], "git_dirty": provenance["git_dirty"],
               "status": "running", "started_utc": started, "gpu_name": None, "gpu_type": None,
@@ -385,7 +505,8 @@ def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str, provenance
                       selected_method="count", learning_rate=SELECTED_RATE)
     if stage == "saved-validation":
         record["learning_rate"] = SELECTED_RATE
-    record_path = attempt / "attempt.json"
+    if job is not None:
+        record.update(job, function_call_id=function_call_id, freeze_sha256=freeze_sha256, main_attempt=main_attempt)
     log = attempt / "run.log"
     start = time.monotonic()
     _record(record_path, record)
@@ -422,7 +543,10 @@ def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str, provenance
                     record["source_learning_rate"] = SELECTED_RATE
                 manifest = volume_root / "data/manifest.json"
                 record["manifest_sha256"] = verify_manifest(manifest)
-                commands = job_commands(stage, repo, manifest, output, hourly_usd, pilot, grid, initial_eval)
+                if job is not None:
+                    commands = [_matrix_argv(job, volume_root, output, hourly_usd, freeze_sha256, main_attempt)]
+                else:
+                    commands = job_commands(stage, repo, manifest, output, hourly_usd, pilot, grid, initial_eval)
                 _run([repo / ".venv/bin/python", "-c", "import torch; "
                       "assert torch.cuda.is_available() and torch.cuda.device_count() == 1, 'expected one CUDA GPU'; "
                       "print(torch.__version__, torch.version.cuda, torch.cuda.get_device_name(0))"], repo, emit)
@@ -454,7 +578,7 @@ def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str, provenance
             try:
                 if output.exists():
                     shutil.copytree(output, attempt / "output")
-                    if stage in ("pilot", "saved-train"):
+                    if stage in ("pilot", "saved-train") or (job is not None and matrix_stage != "test"):
                         commit()  # Verify the copied files on the Volume before releasing local scratch.
             except BaseException as error:
                 previous = record.get("error", "")
@@ -464,10 +588,11 @@ def run_attempt(repo: Path, volume_root: Path, commit, *, stage: str, provenance
                     raise
             finally:
                 try:
+                    metadata = {record_path, log, attempt / "dispatch.json", attempt / "worker.json"}
                     for path in sorted(attempt.rglob("*")):
-                        if path.is_file() and path not in (record_path, log):
+                        if path.is_file() and path not in metadata:
                             record["sha256"][str(path.relative_to(attempt))] = _digest(path)
-                    if stage == "pilot":
+                    if stage == "pilot" or (job is not None and matrix_stage != "test"):
                         record["verified_checkpoints"] = verify_pilot_checkpoints(
                             output, attempt / "output", record["sha256"], completed=record["status"] == "completed"
                         )
@@ -614,6 +739,10 @@ def download_attempt(record, repo, volume):
     stage = record["stage"]
     grid = record.get("grid", "original")
     _check_grid(stage, grid)
+    if stage == "matrix":
+        store = _matrix_store()
+        names = store.TEST_FILES if record["matrix_stage"] == "test" else store.TRAIN_FILES
+        matrix_files = {"run.log", "gpu.csv", *(f"output/{item}" for item in names)}
     if not name or Path(name).name != name or name in (".", ".."):
         raise ValueError(f"Invalid attempt ID: {name!r}")
     folder = repo / "runs/countdown" / name
@@ -629,7 +758,8 @@ def download_attempt(record, repo, volume):
             relative = Path(filename)
             if relative.is_absolute() or ".." in relative.parts:
                 raise ValueError(f"Invalid artifact path: {filename}")
-            if not _small_artifact(stage, relative, grid):
+            keep = filename in matrix_files if stage == "matrix" else _small_artifact(stage, relative, grid)
+            if not keep:
                 continue
             target = staged / relative
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -641,7 +771,7 @@ def download_attempt(record, repo, volume):
             if digest.hexdigest() != expected:
                 raise ValueError(f"SHA-256 mismatch: {filename}")
         _publish_folder(staged, folder, keep_extra=True)
-    if stage != "preflight" and record["status"] == "completed":
+    if stage not in ("preflight", "matrix") and record["status"] == "completed":
         midway = repo / "results/midway"
         target = midway / stage
         if stage == "replay":
@@ -668,6 +798,268 @@ def download_attempt(record, repo, volume):
                     shutil.copyfile(folder / "output" / filename, summary / filename)
             _publish_folder(summary, target)
     return folder
+
+
+def _matrix_store():
+    # Modal imports a file entrypoint by basename. The checkout is also an
+    # importable namespace package when called via python -m pytest.
+    try:
+        from scripts import modal_matrix_store
+    except ModuleNotFoundError as exc:
+        if exc.name != "scripts":
+            raise
+        import modal_matrix_store
+    return modal_matrix_store
+
+
+def _matrix_call_running(call_id):
+    return _matrix_store().modal_call_running(modal, call_id)
+
+
+def _fetch_matrix_file(repo, name, expected):
+    target = repo / name
+    if target.is_file():
+        if _digest(target) != expected:
+            raise ValueError(f"Local SHA-256 mismatch: {target}")
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=target.parent) as tmp:
+        staged = Path(tmp) / target.name
+        with staged.open("xb") as out:
+            for chunk in volume.read_file(name):
+                out.write(chunk)
+        if _digest(staged) != expected:
+            raise ValueError(f"Volume SHA-256 mismatch: {name}")
+        staged.replace(target)
+
+
+def ensure_matrix_data(repo):
+    _fetch_matrix_file(repo, "data/manifest.json", MANIFEST_SHA256)
+    manifest = repo / "data/manifest.json"
+    for panel in json.loads(manifest.read_text())["panels"].values():
+        _fetch_matrix_file(repo, f"data/{panel['file']}", panel["sha256"])
+    print(f"Verified local manifest {verify_manifest(manifest)} and all shards", flush=True)
+
+
+def _run_planner(repo, stage):
+    # The Modal CLI can live in its own environment without the project installed.
+    python = repo / ".venv/bin/python"
+    proc = subprocess.run([str(python) if python.is_file() else sys.executable, "-m", "maxrl.matrix", stage],
+                          cwd=repo, env={**os.environ, "PYTHONPATH": str(repo / "src")},
+                          stdout=subprocess.PIPE, text=True)
+    # stderr inherits the terminal, including the planner's fallback notices.
+    if proc.returncode:
+        raise RuntimeError(f"maxrl.matrix {stage} exited with status {proc.returncode}")
+    return proc.stdout.splitlines()
+
+
+def _remote_freeze():
+    try:
+        return b"".join(volume.read_file(str(MATRIX_FREEZE)))
+    except FileNotFoundError:
+        return None
+
+
+def _matrix_freeze(repo, stage):
+    path = repo / "runs/matrix/frozen.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing = path.exists()
+    if stage == "main" and not existing:
+        _run_planner(repo, "freeze")
+    remote = _remote_freeze()
+    if remote is not None and not path.exists():
+        # Recovery on a fresh laptop, including a standalone collect followed by compare.
+        with tempfile.TemporaryDirectory(dir=path.parent) as tmp:
+            staged = Path(tmp) / path.name
+            staged.write_bytes(remote)
+            staged.replace(path)
+    if remote is None:
+        if stage == "collect":
+            return None
+        if stage == "test":
+            raise ValueError("No main-stage rate freeze on the Volume")
+        if existing:
+            # A supplied or interrupted local freeze must pass the planner before
+            # it can become the immutable Volume copy. The planner owns this check.
+            _run_planner(repo, "main")
+        # Create only. A simultaneous main launch may have won this upload.
+        try:
+            with volume.batch_upload() as batch:
+                batch.put_file(path, str(MATRIX_FREEZE))
+        except FileExistsError:
+            pass
+        remote = _remote_freeze()
+    if remote != path.read_bytes():
+        raise ValueError(f"The Volume holds a different rate freeze from {path}")
+    return hashlib.sha256(remote).hexdigest()
+
+
+def _matrix_jobs(matrix_stage, commands, rerun):
+    jobs = [parse_matrix_command(matrix_stage, line) for line in commands]
+    names = {job["trial"] for job in jobs}
+    if len(names) != len(jobs):
+        raise ValueError("Planner returned duplicate trial paths")
+    if rerun and rerun not in names:
+        raise ValueError(f"Unknown {matrix_stage} trial for --rerun: {rerun}")
+    return [job for job in jobs if not rerun or job["trial"] == rerun]
+
+
+def _launch_decision(job, attempts, rerun):
+    trial = job["trial"]
+    state, _ = attempts.get(trial, (None, None))
+    if state in ("done", "running") and trial != rerun:
+        return f"skipped because {state}", None
+    if job["matrix_stage"] == "test":
+        parent = str(Path(trial).parent)
+        state, record = attempts.get(parent, (None, {}))
+        if state != "done" or record["status"] != "completed":
+            return f"skipped because {parent} has no completed main attempt", None
+        return None, record["attempt_id"]
+    return None, None
+
+
+def _volume_json(path):
+    try:
+        return json.loads(b"".join(volume.read_file(path)))
+    except FileNotFoundError:
+        return None
+
+
+def _json_stream(value):
+    return io.BytesIO(json.dumps(value, allow_nan=False).encode())
+
+
+def _claim_matrix_attempt(job, previous_id, provenance, freeze_sha256, main_attempt, coordinator, submission):
+    # One create-only Volume commit both excludes competing launchers and leaves
+    # a receipt this coordinator can find if Modal delivers its input again.
+    attempt_id = new_attempt_id("matrix")
+    record = dict(job, **provenance, attempt_id=attempt_id, stage="matrix", status="running",
+                  started_utc=_utc(), freeze_sha256=freeze_sha256, main_attempt=main_attempt,
+                  function_call_id=coordinator, coordinator_call_id=coordinator, sha256={})
+    claim = f"matrix/claims/{job['trial']}/{previous_id}.json"
+    with volume.batch_upload() as batch:
+        batch.put_file(_json_stream(attempt_id), claim)
+        batch.put_file(_json_stream(attempt_id), submission)
+        batch.put_file(_json_stream(record), f"{attempt_id}/dispatch.json")
+    return record
+
+
+def _submit_matrix_job(job, attempts, rates, provenance, freeze_sha256, rerun, coordinator):
+    trial = job["trial"]
+    submission = f"matrix/submissions/{coordinator}/{trial}.json"
+    attempt_id = _volume_json(submission)
+    if attempt_id:
+        record = _volume_json(f"{attempt_id}/dispatch.json")
+        # Preemption may have happened after spawn but before its ID was saved.
+        # A worker can already have taken exclusive ownership in that interval.
+        owner = _volume_json(f"{attempt_id}/worker.json")
+        call_id = owner["function_call_id"] if owner else record["function_call_id"]
+        if call_id != coordinator:
+            print(f"{trial}  waiting for previously submitted {attempt_id}  {call_id}", flush=True)
+            return modal.FunctionCall.from_id(call_id)
+    else:
+        while True:
+            reason, main_attempt = _launch_decision(job, attempts, rerun)
+            if reason:
+                print(f"{trial}  {reason}", flush=True)
+                return None
+            prior = attempts.get(trial, (None, {}))[1].get("attempt_id", "first")
+            try:
+                record = _claim_matrix_attempt(job, prior, provenance, freeze_sha256, main_attempt,
+                                               coordinator, submission)
+                break
+            except FileExistsError:
+                # Another coordinator observed the same predecessor. Apply the
+                # requested skip/rerun rule to the winning, durably visible attempt.
+                attempts = _matrix_store().matrix_attempts(volume, _matrix_call_running)
+                if attempts.get(trial, (None, {}))[1].get("attempt_id", "first") == prior:
+                    raise
+    attempt_id = record["attempt_id"]
+    call = run_matrix_trial.spawn(job["matrix_stage"], job["planner_command"], rates, provenance,
+                                  freeze_sha256, record["main_attempt"], attempt_id)
+    record["function_call_id"] = call.object_id
+    try:
+        with volume.batch_upload(force=True) as batch:
+            batch.put_file(_json_stream(record), f"{attempt_id}/dispatch.json")
+    except Exception as exc:
+        # The spawn succeeded. Keep its handle and wait even if this receipt
+        # update failed. The worker commits its own call ID and attempt record.
+        print(f"{trial}  could not update dispatch receipt for {call.object_id}: {exc}", file=sys.stderr)
+    print(f"{trial}  started  {attempt_id}  {call.object_id}", flush=True)
+    return call
+
+
+def dispatch_matrix(matrix_stage, commands, rates, provenance, freeze_sha256, rerun):
+    """Run on Modal so every spawn and wait survives a disconnected local entrypoint."""
+    jobs = _matrix_jobs(matrix_stage, commands, rerun)
+    attempts = _matrix_store().matrix_attempts(volume, _matrix_call_running)
+    coordinator = modal.current_function_call_id()
+    calls, errors = [], []
+    for job in jobs:
+        trial = job["trial"]
+        try:
+            call = _submit_matrix_job(job, attempts, rates, provenance, freeze_sha256, rerun, coordinator)
+            if call is not None:
+                calls.append((trial, call))
+        except Exception as exc:
+            errors.append(f"{trial}: {exc}")
+            print(f"{trial}  submission failed  {exc}", flush=True)
+    for trial, call in calls:
+        try:
+            result = call.get()
+            if result and "existing_worker_call_id" in result:
+                modal.FunctionCall.from_id(result["existing_worker_call_id"]).get()
+        except Exception as exc:
+            errors.append(f"{trial}: {exc}")
+    return errors
+
+
+def launch_matrix(repo, matrix_stage, *, rerun="", dry_run=False):
+    store = _matrix_store()
+
+    def collect():
+        return store.collect_matrix(repo, volume, _matrix_call_running, download_attempt)
+
+    if matrix_stage == "collect":
+        if rerun or dry_run:
+            raise ValueError("--rerun and --dry-run apply to a matrix launch")
+        if _matrix_freeze(repo, "collect"):
+            ensure_matrix_data(repo)
+        collect()
+        return
+    if matrix_stage not in MATRIX_STAGES:
+        raise ValueError(f"Choose --matrix-stage from {(*MATRIX_STAGES, 'collect')}")
+    if not dry_run:
+        provenance = git_provenance(repo)
+        record = preflight.remote(provenance)
+        folder = download_attempt(record, repo, volume)
+        print(f"preflight {record['status']}: {folder}", flush=True)
+        if record["status"] != "completed":
+            raise RuntimeError(record.get("error", f"See {folder}"))
+    ensure_matrix_data(repo)
+    attempts = collect()
+    freeze = _matrix_freeze(repo, matrix_stage) if matrix_stage in ("main", "test") else None
+    commands = _run_planner(repo, matrix_stage)
+    jobs = _matrix_jobs(matrix_stage, commands, rerun)
+    if dry_run:
+        for job in jobs:
+            reason, _ = _launch_decision(job, attempts, rerun)
+            action = reason or f"would start  {job['planner_command']}"
+            print(f"{job['trial']}  {action}", flush=True)
+        return
+
+    rates = json.loads(subprocess.check_output(["modal", "billing", "rates", "--json"], text=True))
+    print(f"Matrix {matrix_stage}: up to 16 {GPU} workers at ${hourly_rate(rates):.6f}/hour each",
+          flush=True)
+    try:
+        call = run_matrix_stage.spawn(matrix_stage, commands, rates, provenance, freeze, rerun)
+        print(f"Stage handed to Modal coordinator {call.object_id}", flush=True)
+        errors = call.get()
+    finally:
+        latest = collect()
+    failed = [job["trial"] for job in jobs if latest.get(job["trial"], (None,))[0] == "failed"]
+    if errors or failed:
+        raise RuntimeError("Matrix attempts failed: " + ", ".join(errors + failed))
 
 
 try:
@@ -698,11 +1090,41 @@ if modal is not None:
                            pilot_attempt=pilot_attempt, provenance=provenance, grid=grid,
                            verification_attempt=verification_attempt, initial_attempt=initial_attempt)
 
+    @app.cls(**{**resources, "max_containers": 16}, gpu=GPU, timeout=24 * 3600)
+    class MatrixTrials:
+        @modal.method()
+        def run(self, matrix_stage, command, rates, provenance, freeze_sha256=None, main_attempt=None,
+                attempt_id=None):
+            if attempt_id is None:
+                attempt_id = new_attempt_id("matrix")
+            call_id = modal.current_function_call_id()
+            owner = _claim_matrix_worker(volume, attempt_id, call_id)
+            if owner != call_id:
+                return {"existing_worker_call_id": owner}
+            volume.reload()
+            return run_attempt(REMOTE_REPO, VOLUME_ROOT, volume.commit, stage="matrix", rates=rates,
+                               provenance=provenance, matrix_stage=matrix_stage, planner_command=command,
+                               function_call_id=call_id, freeze_sha256=freeze_sha256,
+                               main_attempt=main_attempt, attempt_id=attempt_id)
+
+    run_matrix_trial = MatrixTrials().run
+
+    @app.function(image=image, max_containers=1, timeout=24 * 3600)
+    def run_matrix_stage(matrix_stage, commands, rates, provenance, freeze_sha256, rerun):
+        return dispatch_matrix(matrix_stage, commands, rates, provenance, freeze_sha256, rerun)
+
     @app.local_entrypoint()
     def main(stage: str = "preflight", pilot_attempt: str = "", recover_attempt: str = "", grid: str = "original",
-             verification_attempt: str = "", initial_attempt: str = ""):
+             verification_attempt: str = "", initial_attempt: str = "", matrix_stage: str = "",
+             rerun: str = "", dry_run: bool = False):
         """Run one stage or retrieve the small artifacts of an existing attempt."""
         _check_grid(stage, grid)
+        if stage == "matrix":
+            if any((pilot_attempt, recover_attempt, verification_attempt, initial_attempt)):
+                raise ValueError("Choose a matrix stage without legacy attempt options")
+            return launch_matrix(Path(__file__).resolve().parents[1], matrix_stage, rerun=rerun, dry_run=dry_run)
+        if matrix_stage or rerun or dry_run:
+            raise ValueError("--matrix-stage, --rerun and --dry-run require --stage matrix")
         if stage not in STAGES or (stage in PILOT_DEPENDENT) != bool(pilot_attempt):
             raise ValueError(f"Choose a stage from {STAGES}. {PILOT_DEPENDENT} require --pilot-attempt.")
         if ((stage == "saved-train") != bool(verification_attempt)

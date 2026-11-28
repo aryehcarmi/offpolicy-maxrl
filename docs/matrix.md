@@ -21,6 +21,42 @@ All four methods tune for 96 updates at `eta0/3`, `eta0` and `3*eta0` (12 trials
 
 `main` emits 128-update commands for Count and SNIS on seeds 101–105, and Fresh and Uncorrected on seeds 101–103. The first two Fresh trajectories supply discovery and confirmation. `test` independently emits the 256-puzzle, 16-response evaluation of each final checkpoint using the same seed as its trajectory. Review any failed main run before dispatching its evaluation. The planner checks the frozen protocol and manifest before emitting test commands and never reads test response files.
 
+## Run the matrix on Modal
+
+Run from the reviewed checkout with the project environment installed locally. Wait for each stage to finish before advancing.
+
+```sh
+modal run --detach scripts/modal_countdown.py --stage matrix --matrix-stage screen
+modal run --detach scripts/modal_countdown.py --stage matrix --matrix-stage tune
+modal run --detach scripts/modal_countdown.py --stage matrix --matrix-stage main
+modal run --detach scripts/modal_countdown.py --stage matrix --matrix-stage test
+modal run scripts/modal_countdown.py --stage matrix --matrix-stage collect
+python -m maxrl.compare --root runs/matrix > runs/matrix/primary-result.json
+```
+
+| Stage | Work per launch | Projected time per A10 trial |
+|---|---|---|
+| `screen` | Three Fresh training commands from the planner | 4 hours |
+| `tune` | 12 or 16 training commands, using the collected screen to select the grid | 11 hours |
+| `main` | Create `runs/matrix/frozen.json` with the planner if absent, copy it to the Volume, and launch 16 training runs | 16 hours |
+| `test` | Evaluate the 16 final checkpoints for which the latest main attempt completed. Print a skip for each unavailable source and continue. | 1.4 hours |
+
+Each launch runs preflight once on CPU. The launcher fills missing files in local `data/` from the Volume, verifies the pinned manifest and all shards, collects finished trials, and runs the planner locally. Planner errors and selection notices appear on stderr. A planner error stops dispatch. A different Volume freeze also stops the launch. Main and test workers record the freeze SHA-256. Before loading a checkpoint, each test worker verifies the final checkpoint files against its source main attempt’s inventory.
+
+The last call from the laptop hands dispatch to a remote CPU coordinator. It spawns one call per eligible command before waiting for any result. The matrix pool permits 16 A10 containers, each with a 24-hour timeout. Once dispatch is visible in the log, you can close the laptop. A disconnect during local preparation requires repeating the launch. Modal 1.6.4 documents that a detached local entrypoint keeps the last triggered function alive, and that `spawn()` returns a handle for a later wait. [CLI detach behavior](https://github.com/modal-labs/modal-client/blob/cf154c11126e5f184c5a1a11d8c3604887247674/py/modal/cli/run.py#L363-L367) · [SDK invocation behavior](https://github.com/modal-labs/modal-client/blob/cf154c11126e5f184c5a1a11d8c3604887247674/py/modal/_functions.py#L2258-L2271)
+
+The newest attempt for each trial determines the next launch.
+
+| State | Evidence | Action |
+|---|---|---|
+| Done | A finished attempt has `output/run.json` and either completed or wrote a numerical `failure.json`. | Collect and skip. |
+| Running | The running record points to an active Modal call, including a submitted call awaiting its A10. | Skip. |
+| Failed | The call ended with a running record, failed operationally, or lacks the required run record. | Start a new attempt and retain the previous one on the Volume. |
+
+Use `--dry-run` with any launch to perform local data verification, collection, freeze handling and planning, then print what would run. It skips preflight and dispatch. Use `--rerun main/snis-103` on the main launch to force just that trial, even if another attempt is running. If you replace an already evaluated main run, also pass `--rerun main/snis-103/test` on the test launch to evaluate the replacement checkpoint.
+
+A connected launcher collects again when its workers finish. The standalone `collect` command recovers the same files after a disconnect. Its table lists the latest attempt, state, UTC start and finish, and estimated A10 worker cost. Each completed trial’s planner files and `attempt.json` appear together under `runs/matrix/<trial>/`. The immutable local download under `runs/countdown/<attempt-id>/` includes the logs. Training collection includes available metrics, resources and numerical failure details. Test collection includes the metrics and response shard used to check the final result. A numerical screen failure can finish before step-0 validation. Collection preserves that failure, and the tuning planner then reports the missing baseline. Use the screen trial’s `--rerun` to obtain that measurement. Checkpoints stay on Volume `countdown-maxrl`.
+
 ## Numerical settings
 
 Choose one dtype, generation batch size and scoring batch size before the screening runs, and pass those flags consistently to each matrix stage. The defaults are `--dtype float32 --generation-batch 8 --score-batch 1`. Trial selection checks these settings in every recorded screen and tuning run. The version-3 `frozen.json` records them and the prompt metadata with the selected learning rates.
