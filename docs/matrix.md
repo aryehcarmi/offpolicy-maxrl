@@ -23,27 +23,56 @@ All four methods tune for 96 updates at `eta0/3`, `eta0` and `3*eta0` (12 trials
 
 ## Run the matrix on Modal
 
-Run from the reviewed checkout with the project environment installed locally. Wait for each stage to finish before advancing.
+Use one checkout of the reviewed commit for both accounts. In the shell below, `MODAL_PROFILE=acarmi` and `MODAL_PROFILE=aryehcarmi` select authenticated profiles for the workspaces of the same names. Clear any `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` overrides when using profiles. Run one stage at a time. For each paired stage, start the second launch from another terminal in the same checkout after the first prints `Stage handed to Modal coordinator`. Wait for both accounts to finish that stage before advancing.
 
 ```sh
-modal run --detach scripts/modal_countdown.py --stage matrix --matrix-stage screen
-modal run --detach scripts/modal_countdown.py --stage matrix --matrix-stage tune
-modal run --detach scripts/modal_countdown.py --stage matrix --matrix-stage main
-modal run --detach scripts/modal_countdown.py --stage matrix --matrix-stage test
-modal run scripts/modal_countdown.py --stage matrix --matrix-stage collect
+# Define these functions in each terminal.
+collect() { modal run scripts/modal_countdown.py --stage matrix --matrix-stage collect; }
+launch()  { modal run --detach scripts/modal_countdown.py --stage matrix --matrix-stage "$@"; }
+
+# Screen (three Fresh trials, all on acarmi)
+MODAL_PROFILE=acarmi collect
+MODAL_PROFILE=aryehcarmi collect
+MODAL_PROFILE=acarmi launch screen --methods fresh,uncorrected
+
+# Tune (after screen finishes)
+MODAL_PROFILE=acarmi collect
+MODAL_PROFILE=aryehcarmi collect
+MODAL_PROFILE=acarmi launch tune --methods fresh,uncorrected
+MODAL_PROFILE=aryehcarmi launch tune --methods count,snis
+
+# Main (after tuning finishes on both accounts)
+MODAL_PROFILE=acarmi collect
+MODAL_PROFILE=aryehcarmi collect
+MODAL_PROFILE=acarmi launch main --methods fresh,uncorrected
+MODAL_PROFILE=aryehcarmi launch main --methods count,snis
+
+# Test (after main finishes on both accounts)
+MODAL_PROFILE=acarmi collect
+MODAL_PROFILE=aryehcarmi collect
+MODAL_PROFILE=acarmi launch test --methods fresh,uncorrected
+MODAL_PROFILE=aryehcarmi launch test --methods count,snis
+
+# Compare locally after collecting both sets of test results.
+MODAL_PROFILE=acarmi collect
+MODAL_PROFILE=aryehcarmi collect
 python -m maxrl.compare --root runs/matrix > runs/matrix/primary-result.json
 ```
 
-| Stage | Work per launch | Projected time per A10 trial |
-|---|---|---|
-| `screen` | Three Fresh training commands from the planner | 4 hours |
-| `tune` | 12 or 16 training commands, using the collected screen to select the grid | 11 hours |
-| `main` | Create `runs/matrix/frozen.json` with the planner if absent, copy it to the Volume, and launch 16 training runs | 16 hours |
-| `test` | Evaluate the 16 final checkpoints for which the latest main attempt completed. Print a skip for each unavailable source and continue. | 1.4 hours |
+| Stage | `acarmi` (Fresh, Uncorrected) | `aryehcarmi` (Count, SNIS) | Projected hours per A10 trial |
+|---|---|---|---:|
+| `screen` | 3 Fresh learning rates | — | 3.9 |
+| `tune` | 6 or 8 trials | 6 or 8 trials | 10.9 |
+| `main` | 6 training runs | 10 training runs | 14.5 |
+| `test` | Up to 6 final checkpoints | Up to 10 final checkpoints | 1.4 |
 
-Each launch runs preflight once on CPU. The launcher fills missing files in local `data/` from the Volume, verifies the pinned manifest and all shards, collects finished trials, and runs the planner locally. Planner errors and selection notices appear on stderr. A planner error stops dispatch. A different Volume freeze also stops the launch. Main and test workers record the freeze SHA-256. Before loading a checkpoint, each test worker verifies the final checkpoint files against its source main attempt’s inventory.
+Each workspace has its own `countdown-maxrl` Volume and sees only its own trials. `collect` takes no `--methods` option. It merges the current Volume’s verified results into the checkout under `runs/matrix/` and preserves the other workspace’s trials. The local planner stops if a required result from the other account has yet to be collected. The first `main` launch creates `runs/matrix/frozen.json` from the combined screen and tuning records and uploads it. The second `main` launch uploads those exact bytes to its Volume. A conflicting freeze stops the launch. Main and test workers record its SHA-256. Each test worker verifies its final checkpoint against the source main attempt’s inventory. The launcher reports and skips unavailable main checkpoints.
 
-The last call from the laptop hands dispatch to a remote CPU coordinator. It spawns one call per eligible command before waiting for any result. The matrix pool permits 16 A10 containers, each with a 24-hour timeout. Once dispatch is visible in the log, you can close the laptop. A disconnect during local preparation requires repeating the launch. Modal 1.6.4 documents that a detached local entrypoint keeps the last triggered function alive, and that `spawn()` returns a handle for a later wait. [CLI detach behavior](https://github.com/modal-labs/modal-client/blob/cf154c11126e5f184c5a1a11d8c3604887247674/py/modal/cli/run.py#L363-L367) · [SDK invocation behavior](https://github.com/modal-labs/modal-client/blob/cf154c11126e5f184c5a1a11d8c3604887247674/py/modal/_functions.py#L2258-L2271)
+The first real launch that specifies `--methods` writes the method set to `matrix/methods.json` on the Volume after the launch checks pass. Later launches use that record by default and refuse a different set. Without a record, omitting `--methods` selects all four methods and leaves the record absent. A dry run checks the same assignment and limit and leaves the ownership record untouched.
+
+Each launch runs one CPU preflight. The launcher fills missing files in local `data/` from the selected Volume, verifies the pinned manifest and all shards, collects trials and runs the planner. The remote CPU coordinator spawns one call per eligible command, then waits for their attempts. Each workspace’s matrix pool permits 10 A10 containers. The launcher refuses a stage if running matrix trials plus the trials it would start exceed 10. The coordinator and each worker have a 24-hour timeout. Two consecutive 14.5-hour main runs would exceed the coordinator’s lifetime. Run no other GPU jobs on `aryehcarmi` during `main`, when Count and SNIS use all 10 GPUs.
+
+In the disconnect check, the client was interrupted once after all three Fresh screen trials printed `started`. Modal reported “The detached App will keep running”. Two minutes later, `collect` on `acarmi` showed all three trials `running`. A disconnect during local preparation requires repeating the launch. [Screen app](https://modal.com/apps/acarmi/main/ap-sJTTuDEolyqsepsJ2OM7qh) · [Modal 1.6.4 detach behavior](https://github.com/modal-labs/modal-client/blob/cf154c11126e5f184c5a1a11d8c3604887247674/py/modal/cli/run.py#L363-L367) · [SDK invocation behavior](https://github.com/modal-labs/modal-client/blob/cf154c11126e5f184c5a1a11d8c3604887247674/py/modal/_functions.py#L2258-L2271)
 
 The newest attempt for each trial determines the next launch.
 
@@ -53,7 +82,7 @@ The newest attempt for each trial determines the next launch.
 | Running | The running record points to an active Modal call, including a submitted call awaiting its A10. | Skip. |
 | Failed | The call ended with a running record, failed operationally, or lacks the required run record. | Start a new attempt and retain the previous one on the Volume. |
 
-Use `--dry-run` with any launch to perform local data verification, collection, freeze handling and planning, then print what would run. It skips preflight and dispatch. Use `--rerun main/snis-103` on the main launch to force just that trial, even if another attempt is running. If you replace an already evaluated main run, also pass `--rerun main/snis-103/test` on the test launch to evaluate the replacement checkpoint.
+To retry a failed trial, repeat the same stage command on the account that owns its method. Use `--dry-run` with any launch to perform local data verification, collection, freeze handling and planning, then print what would run. It skips preflight and dispatch. On `aryehcarmi`, use `--rerun main/snis-103` on the main launch to force just that trial, even if another attempt is running. If you replace an already evaluated main run, also pass `--rerun main/snis-103/test` on the test launch to evaluate the replacement checkpoint.
 
 A connected launcher collects again when its workers finish. The standalone `collect` command recovers the same files after a disconnect. Its table lists the latest attempt, state, UTC start and finish, and estimated A10 worker cost. Each completed trial’s planner files and `attempt.json` appear together under `runs/matrix/<trial>/`. The immutable local download under `runs/countdown/<attempt-id>/` includes the logs. Training collection includes available metrics, resources and numerical failure details. Test collection includes the metrics and response shard used to check the final result. A numerical screen failure can finish before step-0 validation. Collection preserves that failure, and the tuning planner then reports the missing baseline. Use the screen trial’s `--rerun` to obtain that measurement. Checkpoints stay on Volume `countdown-maxrl`.
 

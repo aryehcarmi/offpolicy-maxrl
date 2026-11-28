@@ -24,6 +24,8 @@ MANIFEST_SHA256 = "abdb27fbeeefdae2c9f6cce441811af401e07937f9b6bd4693f8a5cabb556
 PILOT_DEPENDENT = ("replay", "midpoint", "saved-verify", "saved-train", "saved-validation")
 STAGES = ("preflight", "initial-eval", "pilot", *PILOT_DEPENDENT, "matrix")
 MATRIX_STAGES = ("screen", "tune", "main", "test")
+MATRIX_METHODS = ("count", "snis", "fresh", "uncorrected")
+MATRIX_GPU_LIMIT = 10
 MATRIX_FREEZE = Path("matrix/frozen.json")
 TEST_SDK = "/opt/countdown-test-sdk"
 PILOT_INPUTS = ("run.json", "metrics.jsonl", "resources.csv")
@@ -860,7 +862,7 @@ def _remote_freeze():
         return None
 
 
-def _matrix_freeze(repo, stage):
+def _matrix_freeze(repo, stage, *, dry_run=False):
     path = repo / "runs/matrix/frozen.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     existing = path.exists()
@@ -882,6 +884,8 @@ def _matrix_freeze(repo, stage):
             # A supplied or interrupted local freeze must pass the planner before
             # it can become the immutable Volume copy. The planner owns this check.
             _run_planner(repo, "main")
+        if dry_run:
+            return _digest(path)
         # Create only. A simultaneous main launch may have won this upload.
         try:
             with volume.batch_upload() as batch:
@@ -892,6 +896,24 @@ def _matrix_freeze(repo, stage):
     if remote != path.read_bytes():
         raise ValueError(f"The Volume holds a different rate freeze from {path}")
     return hashlib.sha256(remote).hexdigest()
+
+
+def _matrix_plan(repo, stage, dry_run):
+    if stage not in ("main", "test"):
+        return None, _run_planner(repo, stage)
+    if dry_run and not (repo / "runs/matrix/frozen.json").exists():
+        # The planner uses relative paths in both its freeze and its printed commands.
+        # Preview a first freeze with those same paths without installing it in the checkout.
+        with tempfile.TemporaryDirectory() as tmp:
+            preview = Path(tmp)
+            for name in ("src", "configs", "data", ".venv", "runs/matrix/screen", "runs/matrix/tune"):
+                dest = preview / name
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.symlink_to(repo / name, target_is_directory=True)
+            freeze = _matrix_freeze(preview, stage, dry_run=True)
+            return freeze, _run_planner(preview, stage)
+    freeze = _matrix_freeze(repo, stage, dry_run=dry_run)
+    return freeze, _run_planner(repo, stage)
 
 
 def _matrix_jobs(matrix_stage, commands, rerun):
@@ -1014,8 +1036,33 @@ def dispatch_matrix(matrix_stage, commands, rates, provenance, freeze_sha256, re
     return errors
 
 
-def launch_matrix(repo, matrix_stage, *, rerun="", dry_run=False):
+def _matrix_workspace():
+    return modal.Workspace.from_context().hydrate().name
+
+
+def _account_methods(store, stage, methods):
+    workspace = _matrix_workspace()
+    recorded = store.matrix_methods(volume, MATRIX_METHODS)
+    selected = recorded or MATRIX_METHODS
+    try:
+        if methods is not None:
+            if stage == "collect":
+                raise ValueError("--methods applies to a matrix launch, not collect")
+            requested = {name.strip() for name in methods.split(",")}
+            unknown = requested.difference(MATRIX_METHODS)
+            if unknown:
+                raise ValueError(f"Unknown --methods names: {sorted(unknown)}. Choose from {MATRIX_METHODS}")
+            if recorded and requested != set(recorded):
+                raise ValueError(f"This workspace owns {','.join(recorded)} but --methods requested {methods}")
+            selected = tuple(name for name in MATRIX_METHODS if name in requested)
+    finally:
+        print(f"Modal workspace: {workspace}  Methods: {','.join(selected)}", flush=True)
+    return selected, recorded
+
+
+def launch_matrix(repo, matrix_stage, *, rerun="", dry_run=False, methods=None):
     store = _matrix_store()
+    selected, recorded = _account_methods(store, matrix_stage, methods)
 
     def collect():
         return store.collect_matrix(repo, volume, _matrix_call_running, download_attempt)
@@ -1029,6 +1076,13 @@ def launch_matrix(repo, matrix_stage, *, rerun="", dry_run=False):
         return
     if matrix_stage not in MATRIX_STAGES:
         raise ValueError(f"Choose --matrix-stage from {(*MATRIX_STAGES, 'collect')}")
+    if rerun:
+        # Planner trial paths use stage/method-index or main/method-seed[/test].
+        parts = Path(rerun).parts
+        if len(parts) >= 2:
+            method = parts[1].partition("-")[0]
+            if method in MATRIX_METHODS and method not in selected:
+                raise ValueError(f"Cannot --rerun {rerun}: this workspace does not own method {method}")
     if not dry_run:
         provenance = git_provenance(repo)
         record = preflight.remote(provenance)
@@ -1037,20 +1091,39 @@ def launch_matrix(repo, matrix_stage, *, rerun="", dry_run=False):
         if record["status"] != "completed":
             raise RuntimeError(record.get("error", f"See {folder}"))
     ensure_matrix_data(repo)
-    attempts = collect()
-    freeze = _matrix_freeze(repo, matrix_stage) if matrix_stage in ("main", "test") else None
-    commands = _run_planner(repo, matrix_stage)
+    collect()
+    freeze, commands = _matrix_plan(repo, matrix_stage, dry_run)
     jobs = _matrix_jobs(matrix_stage, commands, rerun)
-    if dry_run:
-        for job in jobs:
-            reason, _ = _launch_decision(job, attempts, rerun)
+    if rerun and jobs[0]["method"] not in selected:
+        raise ValueError(f"Cannot --rerun {rerun}: this workspace does not own method {jobs[0]['method']}")
+    jobs = [job for job in jobs if job["method"] in selected]
+    attempts, running = store.matrix_snapshot(volume, _matrix_call_running)
+    would_start = 0
+    for job in jobs:
+        reason, _ = _launch_decision(job, attempts, rerun)
+        if not reason:
+            would_start += 1
+        if dry_run:
             action = reason or f"would start  {job['planner_command']}"
             print(f"{job['trial']}  {action}", flush=True)
+    if running + would_start > MATRIX_GPU_LIMIT:
+        raise ValueError(f"{running} running + {would_start} would start exceeds "
+                         f"the matrix GPU limit of {MATRIX_GPU_LIMIT}")
+    if dry_run:
         return
 
     rates = json.loads(subprocess.check_output(["modal", "billing", "rates", "--json"], text=True))
-    print(f"Matrix {matrix_stage}: up to 16 {GPU} workers at ${hourly_rate(rates):.6f}/hour each",
+    print(f"Matrix {matrix_stage}: up to {MATRIX_GPU_LIMIT} {GPU} workers at ${hourly_rate(rates):.6f}/hour each",
           flush=True)
+    commands = [job["planner_command"] for job in jobs]
+    if recorded is None:
+        if methods is not None:
+            store.claim_matrix_methods(volume, selected, MATRIX_METHODS)
+        else:
+            # A first explicit launch may have claimed this workspace during preflight.
+            recorded = store.matrix_methods(volume, MATRIX_METHODS)
+            if recorded is not None and recorded != selected:
+                raise ValueError(f"Workspace methods changed to {','.join(recorded)} during planning. Retry the launch.")
     try:
         call = run_matrix_stage.spawn(matrix_stage, commands, rates, provenance, freeze, rerun)
         print(f"Stage handed to Modal coordinator {call.object_id}", flush=True)
@@ -1090,7 +1163,7 @@ if modal is not None:
                            pilot_attempt=pilot_attempt, provenance=provenance, grid=grid,
                            verification_attempt=verification_attempt, initial_attempt=initial_attempt)
 
-    @app.cls(**{**resources, "max_containers": 16}, gpu=GPU, timeout=24 * 3600)
+    @app.cls(**{**resources, "max_containers": MATRIX_GPU_LIMIT}, gpu=GPU, timeout=24 * 3600)
     class MatrixTrials:
         @modal.method()
         def run(self, matrix_stage, command, rates, provenance, freeze_sha256=None, main_attempt=None,
@@ -1116,15 +1189,16 @@ if modal is not None:
     @app.local_entrypoint()
     def main(stage: str = "preflight", pilot_attempt: str = "", recover_attempt: str = "", grid: str = "original",
              verification_attempt: str = "", initial_attempt: str = "", matrix_stage: str = "",
-             rerun: str = "", dry_run: bool = False):
+             rerun: str = "", dry_run: bool = False, methods: str | None = None):
         """Run one stage or retrieve the small artifacts of an existing attempt."""
         _check_grid(stage, grid)
         if stage == "matrix":
             if any((pilot_attempt, recover_attempt, verification_attempt, initial_attempt)):
                 raise ValueError("Choose a matrix stage without legacy attempt options")
-            return launch_matrix(Path(__file__).resolve().parents[1], matrix_stage, rerun=rerun, dry_run=dry_run)
-        if matrix_stage or rerun or dry_run:
-            raise ValueError("--matrix-stage, --rerun and --dry-run require --stage matrix")
+            return launch_matrix(Path(__file__).resolve().parents[1], matrix_stage,
+                                 rerun=rerun, dry_run=dry_run, methods=methods)
+        if matrix_stage or rerun or dry_run or methods is not None:
+            raise ValueError("--matrix-stage, --methods, --rerun and --dry-run require --stage matrix")
         if stage not in STAGES or (stage in PILOT_DEPENDENT) != bool(pilot_attempt):
             raise ValueError(f"Choose a stage from {STAGES}. {PILOT_DEPENDENT} require --pilot-attempt.")
         if ((stage == "saved-train") != bool(verification_attempt)

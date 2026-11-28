@@ -26,6 +26,7 @@ class LocalVolume:
     def __init__(self, root):
         self.root = root
         self.reads = []
+        self.uploads = []
 
     def read_file(self, name):
         path = Path(str(name).lstrip("/"))
@@ -45,6 +46,7 @@ class LocalVolume:
             if target.exists() and not force:
                 raise FileExistsError(target)
             target.write_bytes(source.read() if hasattr(source, "read") else Path(source).read_bytes())
+            self.uploads.append((str(name).lstrip("/"), force))
         yield SimpleNamespace(put_file=put_file)
 
 
@@ -292,6 +294,7 @@ def cluster(env, monkeypatch):
     cli.symlink_to(sys.executable)
     monkeypatch.setenv("PYTHONPATH", str(env.repo / "src"))
     monkeypatch.setattr(app, "volume", env.volume, raising=False)
+    monkeypatch.setattr(app, "_matrix_workspace", lambda: "stub-workspace")
     monkeypatch.setattr(app, "VOLUME_ROOT", env.root)
     monkeypatch.setattr(app, "git_provenance", lambda repo: PROVENANCE)
     monkeypatch.setattr(app, "_gpu_name", lambda: "NVIDIA A10")
@@ -389,6 +392,7 @@ def test_screen_exact_dispatch_and_dry_run(cluster, capsys):
     assert env.app.verify_manifest(env.repo / "data/manifest.json") == env.manifest_hash
     cluster.launch("screen")
     assert cluster.launched == expected
+    assert not (env.root / "matrix/methods.json").exists()
     assert cluster.events == ["preflight", "spawn", "spawn", "spawn", "wait", "wait", "wait"]
     for line, argv in zip(expected, cluster.commands, strict=True):
         assert argv == expected_argv(line, env, argv)
@@ -433,14 +437,91 @@ def test_ended_call_with_running_record_restarts(cluster):
     assert (env.root / stale["attempt_id"] / "attempt.json").is_file()
 
 
-def test_collect_screen_results_drives_real_tuning_planner(cluster, tmp_path):
+def test_tune_dispatches_planner_commands_for_owned_methods(cluster, tmp_path, capsys):
     env = cluster.env
     planner_fixtures(env, tmp_path, "screen")
-    cluster.launch("tune")
-    assert cluster.launched == cli_lines(env, "tune")
-    assert len(cluster.launched) == 12
-    for command, argv in zip(cluster.launched, cluster.commands, strict=True):
+    with pytest.raises(ValueError, match="12"):
+        cluster.launch("tune", dry_run=True)
+    assert capsys.readouterr().out.count("  would start") == 12
+    methods = "count,snis"
+    cluster.launch("tune", methods=methods, dry_run=True)
+    assert not (env.root / "matrix/methods.json").exists()
+    assert cluster.coordinator_id is None
+    header = capsys.readouterr().out.splitlines()[0]
+    assert "stub-workspace" in header and all(method in header for method in methods.split(","))
+
+    cluster.launch("tune", methods=methods)
+    expected = [line for line in cli_lines(env, "tune")
+                if any(f"--method {method} " in line for method in methods.split(","))]
+    assert cluster.launched == expected and len(expected) == 6
+    for command, argv in zip(expected, cluster.commands, strict=True):
         assert argv == expected_argv(command, env, argv)
+
+    # The other six planner trials are still missing. An omitted option must
+    # recover ownership from the Volume and skip the six completed here.
+    cluster.launch("tune")
+    cluster.launch("tune", methods="snis,count")
+    assert cluster.launched == expected
+    assert [force for path, force in env.volume.uploads if path == "matrix/methods.json"] == [False]
+    capsys.readouterr()
+    cluster.launch("collect")
+    header = capsys.readouterr().out.splitlines()[0]
+    assert "stub-workspace" in header and all(method in header for method in methods.split(","))
+    assert "fresh" not in header and "uncorrected" not in header
+
+    coordinator = cluster.coordinator_id
+    for dry_run in (True, False):
+        with pytest.raises(ValueError, match="(?i)method|own"):
+            cluster.launch("tune", methods="fresh,uncorrected", dry_run=dry_run)
+        with pytest.raises(ValueError, match="(?i)own"):
+            cluster.launch("tune", rerun="tune/fresh-0", dry_run=dry_run)
+    assert cluster.coordinator_id == coordinator and cluster.launched == expected
+
+
+def test_method_names_and_invalid_options(cluster):
+    from maxrl.matrix import METHODS
+
+    assert set(cluster.env.app.MATRIX_METHODS) == set(METHODS)
+    with pytest.raises(ValueError, match="unknown-estimator"):
+        cluster.launch("screen", methods="fresh,unknown-estimator")
+    with pytest.raises(ValueError, match="methods"):
+        cluster.launch("collect", methods="fresh")
+    assert cluster.coordinator_id is None
+    assert not (cluster.env.root / "matrix/methods.json").exists()
+
+
+@pytest.mark.parametrize("last_trial,allowed", [
+    ("tune/uncorrected-3", False),  # Eight running, plus three new.
+    ("screen/fresh-0", True),       # One planned trial already runs: eight plus two.
+    ("tune/fresh-0", False),        # A still-live superseded attempt also uses a GPU.
+])
+def test_gpu_limit_counts_running_attempts_before_claim_or_dispatch(cluster, capsys, last_trial, allowed):
+    env = cluster.env
+    assert env.app.MATRIX_GPU_LIMIT == 10
+    trials = [f"tune/{method}-{i}" for method in ("fresh", "uncorrected") for i in range(4)]
+    trials[-1] = last_trial
+    for serial, trial in enumerate(trials, start=1):
+        running = record_attempt(env, trial, serial=serial, status="running")
+        cluster.live.add(running["function_call_id"])
+
+    methods = "fresh,uncorrected"
+    if allowed:
+        cluster.launch("screen", methods=methods)
+        assert cluster.launched == cli_lines(env, "screen")[1:]
+        assert (env.root / "matrix/methods.json").is_file()
+        return
+
+    with pytest.raises(ValueError) as preview:
+        cluster.launch("screen", methods=methods, dry_run=True)
+    output = capsys.readouterr().out
+    for i in range(3):
+        assert f"screen/fresh-{i}  would start" in output
+    with pytest.raises(ValueError) as launch:
+        cluster.launch("screen", methods=methods)
+    assert str(preview.value) == str(launch.value)
+    assert "8" in str(launch.value) and "3" in str(launch.value)
+    assert cluster.coordinator_id is None and not cluster.launched
+    assert not (env.root / "matrix/methods.json").exists()
 
 
 def test_main_creates_freeze_and_test_checks_final_checkpoint(cluster, tmp_path, capsys):
@@ -511,8 +592,9 @@ def test_late_invalid_command_prevents_dispatch_of_valid_prefix(cluster, monkeyp
     commands[-1] = commands[-1].replace("maxrl.train", "maxrl.evaluate")
     monkeypatch.setattr(env.app, "_run_planner", lambda repo, stage: commands)
     with pytest.raises(ValueError, match="maxrl.train"):
-        cluster.launch("screen")
+        cluster.launch("screen", methods="fresh")
     assert cluster.events == ["preflight"]
+    assert not (env.root / "matrix/methods.json").exists()
 
 
 @pytest.mark.parametrize("interruption", ["before-spawn", "queued-without-receipt", "lost-receipt", "while-waiting"])

@@ -3,6 +3,7 @@ import ctypes
 from datetime import datetime, timezone
 import fcntl
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -13,6 +14,7 @@ import tempfile
 
 TRAIN_FILES = ("run.json", "metrics.jsonl", "resources.csv", "failure.json")
 TEST_FILES = ("run.json", "metrics.json", "resources.csv", "responses.jsonl")
+METHODS_FILE = "matrix/methods.json"
 
 
 def modal_call_running(modal, call_id):
@@ -44,6 +46,27 @@ def _read(volume, path):
         return b"".join(volume.read_file(path))
     except FileNotFoundError:
         return None
+
+
+def matrix_methods(volume, allowed):
+    raw = _read(volume, METHODS_FILE)
+    if raw is None:
+        return None
+    record = json.loads(raw)
+    methods = record.get("methods") if isinstance(record, dict) else None
+    if not isinstance(methods, list) or not methods or not all(name in allowed for name in methods):
+        raise ValueError(f"Invalid method ownership in {METHODS_FILE}")
+    return tuple(name for name in allowed if name in methods)
+
+
+def claim_matrix_methods(volume, methods, allowed):
+    """Commit the selection once, accepting a concurrent claim only for the same methods."""
+    try:
+        with volume.batch_upload() as batch:
+            batch.put_file(io.BytesIO(json.dumps({"methods": methods}).encode()), METHODS_FILE)
+    except FileExistsError:
+        if matrix_methods(volume, allowed) != methods:
+            raise ValueError(f"The Volume already owns a different set of methods in {METHODS_FILE}")
 
 
 def _record(volume, name):
@@ -95,16 +118,32 @@ def _state(volume, record, call_running):
     return "failed", record
 
 
-def matrix_attempts(volume, call_running):
+def matrix_snapshot(volume, call_running, *, count_superseded=True):
     """Read newest-first by the dispatch-time ID, independent of GPU assignment or finish order."""
     names = {entry.path.strip("/") for entry in volume.listdir("/")}
     latest = {}
+    running = 0
     for name in sorted(names, reverse=True):
         if not name.startswith("matrix-") or "/" in name:
             continue
         record = _record(volume, name)
-        if record is not None and record["trial"] not in latest:
-            latest[record["trial"]] = _state(volume, record, call_running)
+        if record is None:
+            continue
+        trial = record["trial"]
+        if trial not in latest:
+            latest[trial] = _state(volume, record, call_running)
+            state, _ = latest[trial]
+        elif count_superseded and record["status"] == "running":
+            # A forced rerun can leave the previous worker using a GPU.
+            state, _ = _state(volume, record, call_running)
+        else:
+            continue
+        running += state == "running"
+    return latest, running
+
+
+def matrix_attempts(volume, call_running):
+    latest, _ = matrix_snapshot(volume, call_running, count_superseded=False)
     return latest
 
 
